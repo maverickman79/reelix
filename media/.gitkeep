@@ -1,0 +1,2 @@
+# Default media mount point for the compose stack.
+# Point REELIX_MEDIA_DIR at your real library instead of using this directory.

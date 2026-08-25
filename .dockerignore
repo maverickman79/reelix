@@ -1,0 +1,25 @@
+# Keep the build context small and free of anything host- or capture-specific.
+.git
+.gitignore
+.claude
+
+# The capture harness is a separate standalone stack; it is never part of the
+# server image.
+hack/
+
+docs/
+media/
+
+.env
+*.env
+!.env.example
+
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# Local build output.
+/bin/
+/tmp/
+reelix
+reelixd

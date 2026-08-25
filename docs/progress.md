@@ -21,6 +21,90 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-25 — Step 1: repo skeleton
+
+**Completed:**
+- Go layout: `cmd/reelixd`, `internal/config`, `internal/logging`,
+  `internal/server`. No third-party dependencies.
+- Config from environment (`REELIX_` prefix), validated at startup; all
+  problems reported together rather than one per restart.
+- `log/slog` structured logging, json/text, constitution field vocabulary.
+  Request middleware assigns a UUIDv7 `request_id` and echoes it as
+  `X-Request-ID`.
+- `GET /health` → `200 {"status":"ok","version":"0.0.1"}`. No dependency
+  checks; a stalled database must not make the container look dead.
+- Multi-stage Dockerfile: `golang:1.27-bookworm` build, `debian:bookworm-slim`
+  runtime, non-root uid/gid 1000, 145MB.
+- Root `docker-compose.yml` (project name `reelix`) with app + PostgreSQL 17,
+  named volumes, healthchecks, `.env.example`.
+
+**Verified:**
+- `gofmt`, `go vet ./...`, `go test ./...` clean. 12 tests across config and
+  server.
+- `docker compose up -d --build` from clean (`down -v` first): both containers
+  healthy, `/health` returns 200, both logs free of errors and warnings,
+  graceful shutdown on SIGTERM.
+- Database is `en_US.utf8` under the libc provider on Debian 17.11. Accent sort
+  smoke test gives glibc dictionary order
+  (`Ámbar | Amelie | Amélie | Ångström | École | Zulu`), not musl byte order.
+- `pg_hba.conf` contains no `trust` line; an unauthenticated local socket
+  connection is rejected.
+
+**In flight:**
+- Nothing.
+
+**Blocked:**
+- Nothing.
+
+**Next step:**
+- Step 0 has still not been run — `hack/capture/` has no `captures/`,
+  `ref-config/`, or `test-media/`. Step 1 contained no compatibility code so
+  this did not block it, but Step 5 onward is gated on those fixtures.
+- Otherwise Step 2: migration tooling, initial schema, repository layer.
+
+**Decisions made:**
+- Binary and package: `cmd/reelixd`, image `reelix/server`.
+- App listens on 8080 — matches the swap-test target already written into
+  `hack/capture/docker-compose.yml`.
+- Runtime base is `debian:bookworm-slim`, not scratch/distroless: Step 4 shells
+  out to `jellyfin-ffmpeg7`, which needs apt, shared libs, and eventually
+  driver packages. Choosing minimal now would mean rebuilding the Dockerfile.
+- Postgres is `postgres:17` (Debian), not `17-alpine`. musl collation differs
+  from glibc for text sorting and the library is full of accented and non-Latin
+  titles. This is not reversible after data exists without a reindex.
+- `POSTGRES_INITDB_ARGS=--auth-local=scram-sha-256 --auth-host=scram-sha-256`
+  replaces the image's local-socket `trust` default.
+- `/health` does not touch Postgres in Step 1. A liveness check that fails on a
+  slow database causes restart loops; a `checks` object is added in Step 2 when
+  there is a driver and something real to check.
+- No Postgres driver yet. `REELIX_DB_*` is loaded and validated but unused; the
+  driver is a dependency decision belonging with the repository layer.
+- `/health` access logs are emitted at debug. The compose healthcheck polls
+  every 10s and at info that traffic buries everything operationally useful.
+- `X-Forwarded-For` deliberately not honoured — no trusted-proxy config exists,
+  and an unvalidated forwarded header is spoofable.
+- Access logs record the path but never the query string: Jellyfin clients pass
+  tokens as query parameters.
+- Postgres publishes no host port; only the app container reaches it.
+- This file is now ordered newest-first, matching its own header. Earlier
+  entries had been appended chronologically.
+
+## 2026-08-25 — Toolchain confirmed
+
+**Decisions made:**
+- Go 1.27.0 installed. Verified via `go doc` on the box: stdlib now provides a
+  top-level `uuid` package (RFC 9562) and `encoding/json/v2`. Reelix takes
+  neither `github.com/google/uuid` nor any third-party JSON library.
+- Entity IDs use `uuid.NewV7()`, not `NewV4()` — time-ordered UUIDs sort by
+  creation time, giving sequential B-tree locality on insert-heavy library
+  scans. The compat layer still serializes these as 32-char dashless hex.
+- Note: stdlib `uuid` has no v1/v3/v5/v6/v8 constructors and no version/time
+  introspection. Reelix does not need them.
+- Claude Code moved from npm-global to native install (~/.local/bin), 2.1.245.
+
+**Next step:**
+- Step 1: repo skeleton.
+
 ## 2026-08-24 — Project bootstrapped
 
 **Completed:**
@@ -51,19 +135,3 @@ stay scannable. Prune entries older than the current minor version into
   Kotlin SDK). Secondary: VidHub. Wholphin chosen over VidHub as primary
   because its source is readable and its SDK-generated calls are predictable.
 - 0.0.1 explicitly excludes the admin web frontend — driven by `curl` only.
-
-## 2026-08-25 — Toolchain confirmed
-
-**Decisions made:**
-- Go 1.27.0 installed. Verified via `go doc` on the box: stdlib now provides a
-  top-level `uuid` package (RFC 9562) and `encoding/json/v2`. Reelix takes
-  neither `github.com/google/uuid` nor any third-party JSON library.
-- Entity IDs use `uuid.NewV7()`, not `NewV4()` — time-ordered UUIDs sort by
-  creation time, giving sequential B-tree locality on insert-heavy library
-  scans. The compat layer still serializes these as 32-char dashless hex.
-- Note: stdlib `uuid` has no v1/v3/v5/v6/v8 constructors and no version/time
-  introspection. Reelix does not need them.
-- Claude Code moved from npm-global to native install (~/.local/bin), 2.1.245.
-
-**Next step:**
-- Step 1: repo skeleton.

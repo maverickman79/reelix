@@ -1,0 +1,82 @@
+# Reelix — canonical deployment.
+#
+#   cp .env.example .env   # then edit REELIX_DB_PASSWORD
+#   docker compose up -d
+#
+# This is the main application stack. The capture harness in
+# hack/capture/docker-compose.yml is a separate, standalone stack with its own
+# project name; the two never share a network, a volume, or a port.
+
+name: reelix
+
+services:
+  postgres:
+    # Debian, not alpine. musl's collation differs from glibc's for text
+    # sorting, and this database holds a media library full of accented and
+    # non-Latin titles — ORDER BY on those must behave predictably.
+    image: postgres:17
+    container_name: reelix-postgres
+    environment:
+      POSTGRES_DB: ${REELIX_DB_NAME:-reelix}
+      POSTGRES_USER: ${REELIX_DB_USER:-reelix}
+      POSTGRES_PASSWORD: ${REELIX_DB_PASSWORD:?REELIX_DB_PASSWORD must be set in .env}
+      # The image's initdb default is trust for local socket connections.
+      # Require scram everywhere instead; anything with socket access to the
+      # container should still have to authenticate.
+      POSTGRES_INITDB_ARGS: "--auth-local=scram-sha-256 --auth-host=scram-sha-256"
+      # Postgres refuses to initialise a data directory into a non-empty
+      # volume root; the subdirectory keeps lost+found and friends out of it.
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # No host port published: only the app container needs the database.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${REELIX_DB_USER:-reelix} -d ${REELIX_DB_NAME:-reelix}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      args:
+        VERSION: ${REELIX_VERSION:-0.0.1}
+    image: reelix/server:${REELIX_VERSION:-0.0.1}
+    container_name: reelix-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      REELIX_HTTP_ADDR: ":8080"
+      REELIX_LOG_LEVEL: ${REELIX_LOG_LEVEL:-info}
+      REELIX_LOG_FORMAT: ${REELIX_LOG_FORMAT:-json}
+      REELIX_CONFIG_DIR: /config
+      REELIX_CACHE_DIR: /cache
+      REELIX_DB_HOST: postgres
+      REELIX_DB_PORT: "5432"
+      REELIX_DB_NAME: ${REELIX_DB_NAME:-reelix}
+      REELIX_DB_USER: ${REELIX_DB_USER:-reelix}
+      REELIX_DB_PASSWORD: ${REELIX_DB_PASSWORD:?REELIX_DB_PASSWORD must be set in .env}
+      REELIX_DB_SSLMODE: ${REELIX_DB_SSLMODE:-disable}
+    ports:
+      - "${REELIX_HTTP_PORT:-8080}:8080"
+    volumes:
+      - config:/config
+      - cache:/cache
+      # Media is read-only by default. Write access is requested only when a
+      # feature explicitly requires modifying media files.
+      - ${REELIX_MEDIA_DIR:-./media}:/media:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  config:
+  cache:
