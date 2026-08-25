@@ -1,0 +1,47 @@
+# Step 0 capture harness.
+#
+#   Wholphin -> mitmproxy :8097 -> jellyfin-ref :8096
+#
+# Point the client at http://<host>:8097 — NOT at 8096. Plain HTTP only;
+# do not attempt to MITM TLS on Android TV.
+#
+# Later, to run the swap test, change the mitmproxy --mode target to
+# http://reelix:8080 and leave everything else identical.
+
+name: reelix-capture
+
+services:
+  jellyfin-ref:
+    image: jellyfin/jellyfin:10.11.8
+    container_name: reelix-jellyfin-ref
+    user: "${UID:-1000}:${GID:-1000}"
+    volumes:
+      - ./ref-config:/config
+      - ./ref-cache:/cache
+      - ./test-media:/media:ro
+    ports:
+      # Exposed only for first-run setup in a browser. The client must use 8097.
+      - "8096:8096"
+    restart: "no"
+
+  mitmproxy:
+    image: mitmproxy/mitmproxy:latest
+    container_name: reelix-mitmproxy
+    command: >
+      mitmdump
+      --mode reverse:http://jellyfin-ref:8096
+      --listen-port 8097
+      --set stream_large_bodies=1m
+      --set hardump=/captures/session.har
+      -w /captures/session.flow
+    volumes:
+      - ./captures:/captures
+    ports:
+      - "8097:8097"
+    depends_on:
+      - jellyfin-ref
+    restart: "no"
+
+# stream_large_bodies=1m is load-bearing. Without it mitmproxy buffers the
+# entire video stream into the capture file and you will fill the disk during
+# the playback step.

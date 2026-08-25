@@ -1,0 +1,6 @@
+captures/
+ref-config/
+ref-cache/
+test-media/
+*.flow
+*.har
