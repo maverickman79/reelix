@@ -94,6 +94,38 @@ type MediaItem struct {
 	UpdatedAt  time.Time
 }
 
+// ServerSettings is the server's own identity.
+//
+// ServerID is 32 lowercase hex characters. Clients cache it and treat a change
+// as a different server, so it is generated once and never rewritten.
+type ServerSettings struct {
+	ServerID   string
+	ServerName string
+}
+
+// Session is a client session bound to a device.
+//
+// This is the native record. The Jellyfin SessionInfo DTO is assembled from it
+// at the compatibility boundary and never persisted.
+type Session struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	TokenHash string
+
+	DeviceID      string
+	DeviceName    string
+	Client        string
+	ClientVersion string
+
+	PlayableMediaTypes           []string
+	SupportedCommands            []string
+	SupportsMediaControl         bool
+	SupportsPersistentIdentifier bool
+
+	CreatedAt      time.Time
+	LastActivityAt time.Time
+}
+
 // JobKind is the type of background work. 0.0.1 has one.
 type JobKind string
 
