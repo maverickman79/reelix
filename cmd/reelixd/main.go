@@ -13,6 +13,7 @@ import (
 	"github.com/maverickman79/reelix/internal/config"
 	"github.com/maverickman79/reelix/internal/db"
 	"github.com/maverickman79/reelix/internal/logging"
+	"github.com/maverickman79/reelix/internal/media"
 	"github.com/maverickman79/reelix/internal/server"
 	"github.com/maverickman79/reelix/internal/service"
 )
@@ -85,9 +86,32 @@ func run() error {
 		return fail("migrate", fmt.Errorf("migrating database: %w", err))
 	}
 
+	// Confirm ffprobe exists and runs before serving. A missing binary should
+	// be a startup failure naming the path, not a scan that fails minutes
+	// later on its first file.
+	prober := media.NewProber(cfg.Media.FFprobePath, cfg.Media.ProbeTimeout)
+
+	probeVersion, err := prober.Version(ctx)
+	if err != nil {
+		return fail("ffprobe", fmt.Errorf("checking %s: %w", cfg.Media.FFprobePath, err))
+	}
+	log.Info("media tools ready",
+		slog.String(logging.KeyComponent, "main"),
+		slog.String("ffprobe", cfg.Media.FFprobePath),
+		slog.String("version", probeVersion))
+
+	scans := service.NewScanService(pool, prober, log)
+
+	// Jobs run in-process, so anything still marked running belongs to a
+	// process that no longer exists.
+	if err := scans.ReapOrphanedJobs(ctx); err != nil {
+		return fail("reap_jobs", err)
+	}
+
 	nativeAPI := v1.New(
 		service.NewAuthService(pool),
 		service.NewLibraryService(pool),
+		scans,
 	)
 
 	srv := server.New(cfg.HTTP, log, version, nativeAPI)

@@ -18,6 +18,8 @@ const (
 	KeyComponent = "component"
 	KeyOperation = "operation"
 	KeyRequestID = "request_id"
+	KeyUserID    = "user_id"
+	KeyJobID     = "job_id"
 	KeyError     = "error"
 )
 

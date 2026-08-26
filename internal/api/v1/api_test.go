@@ -11,8 +11,10 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
+	"time"
 	"uuid"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -20,6 +22,7 @@ import (
 	v1 "github.com/maverickman79/reelix/internal/api/v1"
 	"github.com/maverickman79/reelix/internal/db"
 	"github.com/maverickman79/reelix/internal/logging"
+	"github.com/maverickman79/reelix/internal/media"
 	"github.com/maverickman79/reelix/internal/service"
 )
 
@@ -75,7 +78,14 @@ func newHarness(t *testing.T) *harness {
 		t.Fatalf("migrating scratch database: %v", err)
 	}
 
-	api := v1.New(service.NewAuthService(pool), service.NewLibraryService(pool))
+	// The scan service needs a prober; API tests that do not scan never invoke
+	// it, and the scan tests supply their own harness.
+	prober := media.NewProber(ffprobePath(), 30*time.Second)
+	api := v1.New(
+		service.NewAuthService(pool),
+		service.NewLibraryService(pool),
+		service.NewScanService(pool, prober, discard),
+	)
 
 	// StripPrefix mirrors how internal/server mounts the API, so the tests
 	// exercise the same paths production does.
@@ -208,4 +218,25 @@ func (h *harness) errorCode(resp *http.Response) string {
 	}
 	h.decode(resp, &out)
 	return out.Error.Code
+}
+
+// ffprobePath returns the ffprobe binary to test against.
+//
+// Defaults to whatever is on PATH so a developer with ffmpeg installed gets
+// real probing; REELIX_TEST_FFPROBE overrides it, and tests that need a
+// working binary skip when neither resolves.
+func ffprobePath() string {
+	if p := os.Getenv("REELIX_TEST_FFPROBE"); p != "" {
+		return p
+	}
+	if p, err := exec.LookPath("ffprobe"); err == nil {
+		return p
+	}
+	return "ffprobe"
+}
+
+// hasFFprobe reports whether a usable ffprobe exists on this machine.
+func hasFFprobe() bool {
+	_, err := exec.LookPath(ffprobePath())
+	return err == nil
 }

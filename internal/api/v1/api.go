@@ -19,11 +19,12 @@ const Prefix = "/api/v1"
 type API struct {
 	auth      *service.AuthService
 	libraries *service.LibraryService
+	scans     *service.ScanService
 }
 
 // New builds the API.
-func New(authSvc *service.AuthService, libraries *service.LibraryService) *API {
-	return &API{auth: authSvc, libraries: libraries}
+func New(authSvc *service.AuthService, libraries *service.LibraryService, scans *service.ScanService) *API {
+	return &API{auth: authSvc, libraries: libraries, scans: scans}
 }
 
 // Routes returns the handler for everything under Prefix.
@@ -42,6 +43,11 @@ func (a *API) Routes() http.Handler {
 
 	mux.HandleFunc("GET /libraries", a.requireAuth(a.handleListLibraries))
 	mux.HandleFunc("POST /libraries", a.requireAdmin(a.handleCreateLibrary))
+
+	// Starting work is an administrative act; watching it is not.
+	mux.HandleFunc("POST /libraries/{id}/scan", a.requireAdmin(a.handleScanLibrary))
+	mux.HandleFunc("GET /jobs", a.requireAuth(a.handleListJobs))
+	mux.HandleFunc("GET /jobs/{id}", a.requireAuth(a.handleGetJob))
 
 	return mux
 }
