@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/maverickman79/reelix/internal/config"
+	"github.com/maverickman79/reelix/internal/db"
 	"github.com/maverickman79/reelix/internal/logging"
 	"github.com/maverickman79/reelix/internal/server"
 )
@@ -52,6 +53,20 @@ func run() error {
 	// the default behaviour so an operator can always force an exit.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	pool, err := db.Open(ctx, cfg.Database, log)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
+	// Migrations run before the listener binds. Docker-first deployment means
+	// there is no separate migrate step an operator can be relied on to run,
+	// and serving requests against a half-migrated schema is worse than
+	// failing to start.
+	if err := db.Migrate(ctx, pool, log); err != nil {
+		return fmt.Errorf("migrating database: %w", err)
+	}
 
 	srv := server.New(cfg.HTTP, log, version)
 	if err := srv.Run(ctx); err != nil {
