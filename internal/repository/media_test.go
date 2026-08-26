@@ -29,10 +29,11 @@ func TestMediaRepositoryItems(t *testing.T) {
 	libraryID := seedLibrary(t, ctx, repository.NewLibraryRepository(pool))
 
 	item := domain.MediaItem{
-		LibraryID: libraryID,
-		Kind:      domain.MediaItemKindMovie,
-		Title:     "Idiocracy",
-		Year:      ptr(2006),
+		LibraryID:  libraryID,
+		Kind:       domain.MediaItemKindMovie,
+		Title:      "Idiocracy",
+		Year:       ptr(2006),
+		SourcePath: "/media/movies/Idiocracy (2006).mkv",
 	}
 	if err := media.CreateItem(ctx, &item); err != nil {
 		t.Fatalf("CreateItem: %v", err)
@@ -49,9 +50,10 @@ func TestMediaRepositoryItems(t *testing.T) {
 	// A year the parser could not find stays null rather than becoming zero.
 	// 0.0.1's parser is minimal and expected to fail on some filenames.
 	unparsed := domain.MediaItem{
-		LibraryID: libraryID,
-		Kind:      domain.MediaItemKindMovie,
-		Title:     "some.scene.release.name",
+		LibraryID:  libraryID,
+		Kind:       domain.MediaItemKindMovie,
+		Title:      "some.scene.release.name",
+		SourcePath: "/media/movies/some.scene.release.name.mkv",
 	}
 	if err := media.CreateItem(ctx, &unparsed); err != nil {
 		t.Fatalf("CreateItem without a year: %v", err)
@@ -85,7 +87,8 @@ func TestMediaFileLargeSize(t *testing.T) {
 	media := repository.NewMediaRepository(pool)
 	libraryID := seedLibrary(t, ctx, repository.NewLibraryRepository(pool))
 
-	item := domain.MediaItem{LibraryID: libraryID, Kind: domain.MediaItemKindMovie, Title: "Remux"}
+	item := domain.MediaItem{LibraryID: libraryID, Kind: domain.MediaItemKindMovie,
+		Title: "Remux", SourcePath: "/media/movies/Remux (2019)"}
 	if err := media.CreateItem(ctx, &item); err != nil {
 		t.Fatalf("CreateItem: %v", err)
 	}
@@ -143,7 +146,8 @@ func TestMediaFilenameWithSpacesAndBrackets(t *testing.T) {
 	media := repository.NewMediaRepository(pool)
 	libraryID := seedLibrary(t, ctx, repository.NewLibraryRepository(pool))
 
-	item := domain.MediaItem{LibraryID: libraryID, Kind: domain.MediaItemKindMovie, Title: "Bracketed"}
+	item := domain.MediaItem{LibraryID: libraryID, Kind: domain.MediaItemKindMovie,
+		Title: "Bracketed", SourcePath: "/media/movies/bracketed"}
 	if err := media.CreateItem(ctx, &item); err != nil {
 		t.Fatalf("CreateItem: %v", err)
 	}
@@ -176,7 +180,8 @@ func TestUpsertFileIsStableAcrossRescans(t *testing.T) {
 	media := repository.NewMediaRepository(pool)
 	libraryID := seedLibrary(t, ctx, repository.NewLibraryRepository(pool))
 
-	item := domain.MediaItem{LibraryID: libraryID, Kind: domain.MediaItemKindMovie, Title: "Idiocracy"}
+	item := domain.MediaItem{LibraryID: libraryID, Kind: domain.MediaItemKindMovie,
+		Title: "Idiocracy", SourcePath: "/media/movies/Idiocracy (2006).mkv"}
 	if err := media.CreateItem(ctx, &item); err != nil {
 		t.Fatalf("CreateItem: %v", err)
 	}
@@ -253,7 +258,8 @@ func TestReplaceStreams(t *testing.T) {
 	media := repository.NewMediaRepository(pool)
 	libraryID := seedLibrary(t, ctx, repository.NewLibraryRepository(pool))
 
-	item := domain.MediaItem{LibraryID: libraryID, Kind: domain.MediaItemKindMovie, Title: "Idiocracy"}
+	item := domain.MediaItem{LibraryID: libraryID, Kind: domain.MediaItemKindMovie,
+		Title: "Idiocracy", SourcePath: "/media/movies/Idiocracy (2006).mkv"}
 	if err := media.CreateItem(ctx, &item); err != nil {
 		t.Fatalf("CreateItem: %v", err)
 	}
@@ -330,7 +336,8 @@ func TestMediaStreamRejectsUnknownKind(t *testing.T) {
 	media := repository.NewMediaRepository(pool)
 	libraryID := seedLibrary(t, ctx, repository.NewLibraryRepository(pool))
 
-	item := domain.MediaItem{LibraryID: libraryID, Kind: domain.MediaItemKindMovie, Title: "X"}
+	item := domain.MediaItem{LibraryID: libraryID, Kind: domain.MediaItemKindMovie,
+		Title: "X", SourcePath: "/media/movies/x.mkv"}
 	if err := media.CreateItem(ctx, &item); err != nil {
 		t.Fatalf("CreateItem: %v", err)
 	}
@@ -354,8 +361,10 @@ func TestMediaFilePathIsUnique(t *testing.T) {
 	media := repository.NewMediaRepository(pool)
 	libraryID := seedLibrary(t, ctx, repository.NewLibraryRepository(pool))
 
-	first := domain.MediaItem{LibraryID: libraryID, Kind: domain.MediaItemKindMovie, Title: "A"}
-	second := domain.MediaItem{LibraryID: libraryID, Kind: domain.MediaItemKindMovie, Title: "B"}
+	first := domain.MediaItem{LibraryID: libraryID, Kind: domain.MediaItemKindMovie,
+		Title: "A", SourcePath: "/media/movies/a"}
+	second := domain.MediaItem{LibraryID: libraryID, Kind: domain.MediaItemKindMovie,
+		Title: "B", SourcePath: "/media/movies/b"}
 	for _, it := range []*domain.MediaItem{&first, &second} {
 		if err := media.CreateItem(ctx, it); err != nil {
 			t.Fatalf("CreateItem: %v", err)

@@ -21,7 +21,7 @@ func NewMediaRepository(q db.Querier) *MediaRepository {
 }
 
 const (
-	itemColumns = `id, library_id, kind, title, year, created_at, updated_at`
+	itemColumns = `id, library_id, kind, title, year, source_path, created_at, updated_at`
 	fileColumns = `id, media_item_id, path, filename, size_bytes, container,
 	               duration_seconds, probed_at, created_at, updated_at`
 	streamColumns = `id, media_file_id, stream_index, kind, codec, width, height,
@@ -29,30 +29,57 @@ const (
 )
 
 // CreateItem inserts a media item, assigning its id and timestamps.
+//
+// SourcePath must be set; it is unique within the library. Use UpsertItem when
+// the item may already exist, which is what a re-scan needs.
 func (r *MediaRepository) CreateItem(ctx context.Context, m *domain.MediaItem) error {
 	m.ID = newID()
 	m.CreatedAt = now()
 	m.UpdatedAt = m.CreatedAt
 
 	const q = `
-		INSERT INTO media_items (id, library_id, kind, title, year, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`
+		INSERT INTO media_items (id, library_id, kind, title, year, source_path, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
 
-	_, err := r.q.Exec(ctx, q, m.ID, m.LibraryID, m.Kind, m.Title, m.Year, m.CreatedAt, m.UpdatedAt)
+	_, err := r.q.Exec(ctx, q, m.ID, m.LibraryID, m.Kind, m.Title, m.Year,
+		m.SourcePath, m.CreatedAt, m.UpdatedAt)
 	return mapError("creating media item", err)
+}
+
+// UpsertItem inserts a media item, or updates the one already recorded for the
+// same source path in the same library.
+//
+// (library_id, source_path) is the item's identity on disk. Preserving the id
+// across re-scans is what keeps a client's bookmarks, and eventually playback
+// state, pointing at the same movie.
+func (r *MediaRepository) UpsertItem(ctx context.Context, m *domain.MediaItem) error {
+	if m.ID == (uuid.UUID{}) {
+		m.ID = newID()
+	}
+	ts := now()
+	m.CreatedAt = ts
+	m.UpdatedAt = ts
+
+	const q = `
+		INSERT INTO media_items (id, library_id, kind, title, year, source_path, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT (library_id, source_path) DO UPDATE SET
+			kind       = EXCLUDED.kind,
+			title      = EXCLUDED.title,
+			year       = EXCLUDED.year,
+			updated_at = EXCLUDED.updated_at
+		RETURNING id, created_at`
+
+	err := r.q.QueryRow(ctx, q, m.ID, m.LibraryID, m.Kind, m.Title, m.Year,
+		m.SourcePath, m.CreatedAt, m.UpdatedAt).Scan(&m.ID, &m.CreatedAt)
+
+	return mapError("upserting media item", err)
 }
 
 // GetItem returns one media item, or ErrNotFound.
 func (r *MediaRepository) GetItem(ctx context.Context, id uuid.UUID) (domain.MediaItem, error) {
 	const q = `SELECT ` + itemColumns + ` FROM media_items WHERE id = $1`
-
-	var m domain.MediaItem
-	err := r.q.QueryRow(ctx, q, id).Scan(
-		&m.ID, &m.LibraryID, &m.Kind, &m.Title, &m.Year, &m.CreatedAt, &m.UpdatedAt)
-	if err != nil {
-		return domain.MediaItem{}, mapError("getting media item", err)
-	}
-	return m, nil
+	return scanItem(r.q.QueryRow(ctx, q, id), "getting media item")
 }
 
 // ListItemsByLibrary returns a library's items, oldest first.
@@ -67,14 +94,24 @@ func (r *MediaRepository) ListItemsByLibrary(ctx context.Context, libraryID uuid
 
 	var out []domain.MediaItem
 	for rows.Next() {
-		var m domain.MediaItem
-		if err := rows.Scan(&m.ID, &m.LibraryID, &m.Kind, &m.Title, &m.Year,
-			&m.CreatedAt, &m.UpdatedAt); err != nil {
-			return nil, mapError("listing media items", err)
+		m, err := scanItem(rows, "listing media items")
+		if err != nil {
+			return nil, err
 		}
 		out = append(out, m)
 	}
 	return out, mapError("listing media items", rows.Err())
+}
+
+// scanItem reads one row in itemColumns order.
+func scanItem(row interface{ Scan(...any) error }, op string) (domain.MediaItem, error) {
+	var m domain.MediaItem
+	err := row.Scan(&m.ID, &m.LibraryID, &m.Kind, &m.Title, &m.Year,
+		&m.SourcePath, &m.CreatedAt, &m.UpdatedAt)
+	if err != nil {
+		return domain.MediaItem{}, mapError(op, err)
+	}
+	return m, nil
 }
 
 // UpsertFile inserts a file, or updates the existing row with the same path.

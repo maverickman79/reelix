@@ -29,6 +29,10 @@ var ErrNotFound = errors.New("not found")
 // duplicate username, or a second library path identical to an existing one.
 var ErrConflict = errors.New("conflict")
 
+// ErrInvalidState is returned when a caller asks for a transition that does
+// not exist, such as finishing a job into a non-terminal state.
+var ErrInvalidState = errors.New("invalid state transition")
+
 // uniqueViolation is PostgreSQL's SQLSTATE for a unique constraint breach.
 const uniqueViolation = "23505"
 

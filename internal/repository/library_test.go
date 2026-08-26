@@ -150,10 +150,11 @@ func TestLibraryDeleteCascades(t *testing.T) {
 	}
 
 	item := domain.MediaItem{
-		LibraryID: lib.ID,
-		Kind:      domain.MediaItemKindMovie,
-		Title:     "Idiocracy",
-		Year:      ptr(2006),
+		LibraryID:  lib.ID,
+		Kind:       domain.MediaItemKindMovie,
+		Title:      "Idiocracy",
+		Year:       ptr(2006),
+		SourcePath: "/media/movies/Idiocracy (2006).mkv",
 	}
 	if err := media.CreateItem(ctx, &item); err != nil {
 		t.Fatalf("CreateItem: %v", err)

@@ -85,8 +85,56 @@ type MediaItem struct {
 	Kind      MediaItemKind
 	Title     string
 	Year      *int
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	// SourcePath is where this item came from on disk: the movie's directory,
+	// or the file's own path when the file sits directly in a library root.
+	// Unique within a library, and what makes a re-scan update rather than
+	// duplicate.
+	SourcePath string
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
+// JobKind is the type of background work. 0.0.1 has one.
+type JobKind string
+
+const JobKindLibraryScan JobKind = "library_scan"
+
+// JobState is where a job is in its lifecycle.
+type JobState string
+
+const (
+	JobStateQueued    JobState = "queued"
+	JobStateRunning   JobState = "running"
+	JobStateCompleted JobState = "completed"
+	JobStateFailed    JobState = "failed"
+	JobStateCancelled JobState = "cancelled"
+)
+
+// Terminal reports whether a job has finished and will not change again.
+func (s JobState) Terminal() bool {
+	switch s {
+	case JobStateCompleted, JobStateFailed, JobStateCancelled:
+		return true
+	}
+	return false
+}
+
+// Job is one unit of long-running background work.
+//
+// Progress is files probed out of files discovered. ProgressTotal is 0 until
+// the walk finishes, because the count is not known before then.
+type Job struct {
+	ID              uuid.UUID
+	Kind            JobKind
+	State           JobState
+	LibraryID       *uuid.UUID
+	ProgressCurrent int
+	ProgressTotal   int
+	CurrentItem     *string
+	Error           *string
+	CreatedAt       time.Time
+	StartedAt       *time.Time
+	FinishedAt      *time.Time
 }
 
 // MediaFile is one physical file on disk.
