@@ -31,6 +31,12 @@ const (
 	DefaultDBName    = "reelix"
 	DefaultDBUser    = "reelix"
 	DefaultDBSSLMode = "disable"
+
+	// The jellyfin-ffmpeg7 package installs here. Reelix shells out to these
+	// binaries; it never links them.
+	DefaultFFprobePath  = "/usr/lib/jellyfin-ffmpeg/ffprobe"
+	DefaultFFmpegPath   = "/usr/lib/jellyfin-ffmpeg/ffmpeg"
+	DefaultProbeTimeout = 2 * time.Minute
 )
 
 // Config is the fully resolved configuration for one server process.
@@ -39,6 +45,21 @@ type Config struct {
 	Log      Log
 	Paths    Paths
 	Database Database
+	Media    Media
+}
+
+// Media configures the external media tools.
+//
+// The constitution requires both binary paths to be configurable with sane
+// defaults for the container image. FFmpegPath is unused until transcoding
+// arrives; it is loaded and validated now so that the configuration surface
+// does not change again for it.
+type Media struct {
+	FFprobePath string
+	FFmpegPath  string
+	// ProbeTimeout bounds a single ffprobe invocation. A probe that hangs on
+	// one file must not stall an entire library scan.
+	ProbeTimeout time.Duration
 }
 
 // HTTP configures the public listener.
@@ -116,6 +137,23 @@ func Load() (Config, error) {
 			Password: lookupString("REELIX_DB_PASSWORD", ""),
 			SSLMode:  strings.ToLower(lookupString("REELIX_DB_SSLMODE", DefaultDBSSLMode)),
 		},
+		Media: Media{
+			FFprobePath:  lookupString("REELIX_FFPROBE_PATH", DefaultFFprobePath),
+			FFmpegPath:   lookupString("REELIX_FFMPEG_PATH", DefaultFFmpegPath),
+			ProbeTimeout: DefaultProbeTimeout,
+		},
+	}
+
+	if raw, ok := lookup("REELIX_PROBE_TIMEOUT"); ok {
+		d, err := time.ParseDuration(raw)
+		switch {
+		case err != nil:
+			fail("REELIX_PROBE_TIMEOUT: %q is not a duration (want e.g. 2m, 90s)", raw)
+		case d <= 0:
+			fail("REELIX_PROBE_TIMEOUT: must be positive, got %q", raw)
+		default:
+			cfg.Media.ProbeTimeout = d
+		}
 	}
 
 	if raw, ok := lookup("REELIX_SHUTDOWN_TIMEOUT"); ok {
@@ -171,6 +209,12 @@ func Load() (Config, error) {
 	}
 	if !slices.Contains(validSSLModes, cfg.Database.SSLMode) {
 		fail("REELIX_DB_SSLMODE: %q is not one of %s", cfg.Database.SSLMode, strings.Join(validSSLModes, ", "))
+	}
+	if cfg.Media.FFprobePath == "" {
+		fail("REELIX_FFPROBE_PATH: must not be empty")
+	}
+	if cfg.Media.FFmpegPath == "" {
+		fail("REELIX_FFMPEG_PATH: must not be empty")
 	}
 
 	if len(errs) > 0 {

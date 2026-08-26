@@ -30,11 +30,35 @@ FROM debian:bookworm-slim AS runtime
 
 # ca-certificates for outbound TLS (metadata providers, later steps).
 # curl backs the compose healthcheck.
+# gnupg is needed only to dearmor the Jellyfin signing key below.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
+        gnupg \
     && rm -rf /var/lib/apt/lists/*
+
+# jellyfin-ffmpeg7 provides ffmpeg and ffprobe.
+#
+# Reelix does not build its own FFmpeg: these builds already carry the QSV,
+# NVENC, and VA-API patches and driver plumbing that make hardware
+# acceleration work across the hardware Reelix targets. They are invoked as
+# subprocesses, never linked and never cgo-bound, which keeps their separate
+# licensing and distribution cleanly separated from this AGPL binary.
+#
+# Pinned to the 7.x series deliberately. The repository also carries
+# jellyfin-ffmpeg5, 6, and 8; an unpinned install would silently change the
+# encoder behaviour under the playback decisions in Step 7.
+RUN install -d -m 0755 /etc/apt/keyrings \
+    && curl -fsSL https://repo.jellyfin.org/jellyfin_team.gpg.key \
+        | gpg --dearmor -o /etc/apt/keyrings/jellyfin.gpg \
+    && chmod 0644 /etc/apt/keyrings/jellyfin.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/jellyfin.gpg arch=amd64] https://repo.jellyfin.org/debian bookworm main" \
+        > /etc/apt/sources.list.d/jellyfin.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends jellyfin-ffmpeg7 \
+    && rm -rf /var/lib/apt/lists/* \
+    && /usr/lib/jellyfin-ffmpeg/ffprobe -version | head -1
 
 # Run unprivileged. UID/GID 1000 matches the common desktop-Linux first user,
 # which keeps bind-mounted media and config readable without chowning them.
@@ -51,7 +75,9 @@ USER reelix
 
 ENV REELIX_HTTP_ADDR=:8080 \
     REELIX_CONFIG_DIR=/config \
-    REELIX_CACHE_DIR=/cache
+    REELIX_CACHE_DIR=/cache \
+    REELIX_FFPROBE_PATH=/usr/lib/jellyfin-ffmpeg/ffprobe \
+    REELIX_FFMPEG_PATH=/usr/lib/jellyfin-ffmpeg/ffmpeg
 
 EXPOSE 8080
 
