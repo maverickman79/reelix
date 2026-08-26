@@ -23,10 +23,10 @@ import (
 var version = "0.0.1-dev"
 
 func main() {
+	// run reports its own failures: to stderr while there is no logger, and
+	// through the logger once there is one. Printing here as well would
+	// duplicate the second case and emit it in the wrong format.
 	if err := run(); err != nil {
-		// The logger may not exist yet when configuration fails, so the
-		// startup path reports to stderr directly.
-		fmt.Fprintf(os.Stderr, "reelixd: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -34,6 +34,10 @@ func main() {
 func run() error {
 	cfg, err := config.Load()
 	if err != nil {
+		// The logger cannot be built until the configuration that describes it
+		// parses, so this one failure goes to stderr. It is also the failure
+		// most likely to be read by a human running the container by hand.
+		fmt.Fprintf(os.Stderr, "reelixd: %v\n", err)
 		return err
 	}
 
@@ -54,9 +58,20 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// fail records a startup failure through the logger. Everything past this
+	// point has one, so a crash should be as greppable as a normal event
+	// rather than an unstructured line on stderr.
+	fail := func(operation string, err error) error {
+		log.Error("startup failed",
+			slog.String(logging.KeyComponent, "main"),
+			slog.String(logging.KeyOperation, operation),
+			slog.String(logging.KeyError, err.Error()))
+		return err
+	}
+
 	pool, err := db.Open(ctx, cfg.Database, log)
 	if err != nil {
-		return err
+		return fail("db_open", err)
 	}
 	defer pool.Close()
 
@@ -65,12 +80,12 @@ func run() error {
 	// and serving requests against a half-migrated schema is worse than
 	// failing to start.
 	if err := db.Migrate(ctx, pool, log); err != nil {
-		return fmt.Errorf("migrating database: %w", err)
+		return fail("migrate", fmt.Errorf("migrating database: %w", err))
 	}
 
 	srv := server.New(cfg.HTTP, log, version)
 	if err := srv.Run(ctx); err != nil {
-		return fmt.Errorf("http server: %w", err)
+		return fail("serve", fmt.Errorf("http server: %w", err))
 	}
 
 	log.Info("reelix stopped", slog.String(logging.KeyComponent, "main"))

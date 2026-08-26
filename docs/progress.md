@@ -21,6 +21,60 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-26 — Startup resilience: database connect retry
+
+**Completed:**
+- `db.Open` now retries the initial connectivity check with exponential
+  backoff — 250ms doubling to a 5s cap, 60s total budget — and aborts
+  immediately if the context is cancelled.
+- Authentication and configuration failures are *not* retried. SQLSTATE
+  28P01, 28000, and 3D000 fail fast; everything else (refused connections,
+  DNS failures, a server in recovery) is treated as transient.
+- Startup failures after the logger exists now log structured at error with
+  `component`/`operation`/`error` instead of an unstructured stderr line.
+  Configuration failures still go to stderr, because the logger cannot be
+  built until the config describing it parses.
+
+**Why:**
+- `docker compose restart` restarts services in parallel and does not honour
+  `depends_on: service_healthy` — that ordering applies only to `up`. The app
+  reached `db.Open` before Postgres had bound its socket, exited, and was
+  respawned by `restart: unless-stopped`. It self-healed, but every restart
+  cost a crash cycle, and the failure was invisible to log tooling.
+- The same window opens on a Postgres upgrade or a host reboot, neither of
+  which `depends_on` covers either.
+
+**Verified:**
+- `gofmt`, `go vet ./...` clean. 33 tests pass with a database; integration
+  tests still skip cleanly without `REELIX_TEST_DB_DSN`.
+- Retry, give-up, and context-cancellation paths tested against a closed port
+  with an injected fast policy, so the suite does not wait a minute.
+- Fail-fast confirmed against real Postgres: a rejected password errors in
+  0.01s rather than retrying for the budget.
+- Both error paths asserted not to contain the database password.
+- **Regression check:** rebuilt and ran the same `docker compose restart` that
+  crashed. Log shows `database not ready, retrying` on attempt 1 and
+  `database became reachable` after 272ms. Zero crashes.
+
+**In flight:**
+- Nothing.
+
+**Blocked:**
+- Nothing.
+
+**Next step:**
+- Step 3: first-run administrator creation, password hashing, native auth,
+  create/list library over `/api/v1/*`.
+
+**Decisions made:**
+- Retry budget is 60s, chosen against PostgreSQL's own startup: an unclean
+  shutdown means WAL recovery before it accepts connections, which on a large
+  database takes tens of seconds.
+- The budget is a constant, not configuration. No deployment has needed to
+  tune it; it becomes an env var when one does.
+- The retry policy is injected into an unexported `open` so tests exercise
+  the give-up path in milliseconds rather than mutating package globals.
+
 ## 2026-08-26 — Step 2: persistence
 
 **Completed:**
