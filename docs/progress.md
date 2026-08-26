@@ -21,6 +21,54 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-26 — Step 0 complete: Wholphin capture
+
+**Completed:**
+- Reference stack captured: Wholphin 1.0.7 on Android TV (Ugoos SK1) against
+  `jellyfin/jellyfin:10.11.8`, proxied through mitmproxy. Full flow —
+  discovery, login, library browse, movie select, direct play, seek, stop.
+- 31 routes, 202 redacted fixtures landed in
+  `internal/compat/jellyfin/testdata`, one directory per route.
+- Test library is 6 files, chosen to exercise the paths that break: H.264 MP4,
+  H.264 MKV, x264 BluRay, a filename containing spaces and brackets, HEVC
+  2160p, and a 70GB remux.
+- *Idiocracy* direct-played on the SK1. That is the reference decision Step 7
+  must reproduce.
+
+**Findings that constrain implementation:**
+- Every range request is open-ended (`bytes=N-`). No multi-range, no suffix
+  ranges. Max observed offset 5255045235, which exceeds int32 — the stream
+  path must be 64-bit end to end, including any intermediate arithmetic.
+- Wholphin opens a new TCP connection per request rather than relying on
+  keep-alive. Do not assume connection reuse when reasoning about session or
+  per-connection state.
+- `/socket` is opened once and held for the session, not polled.
+- QuickConnect is probed during login (`GET /QuickConnect/Enabled` and
+  `POST /QuickConnect/Initiate`). Both must be answered, even if only to
+  report the feature disabled.
+- Client is jellyfin-sdk-kotlin over OkHttp: deserialization is strict, so a
+  missing non-nullable field is a hard client-side exception, not degradation.
+
+**In flight:**
+- Nothing.
+
+**Blocked:**
+- Nothing.
+
+**Next step:**
+- Step 2: migration tooling, initial schema, repository layer.
+- Supersedes the "Do not begin Step 1 until the capture exists" line in the
+  2026-08-24 entry. Steps 0 and 1 are both complete; that gate is historical.
+
+**Decisions made:**
+- All published container ports are now bound to the Tailscale IP rather than
+  `0.0.0.0`. An earlier capture run through a reverse proxy exposed 8096 and
+  8097 publicly and drew vulnerability scanners within the hour. That capture
+  was discarded and retaken direct.
+- Raw captures under `hack/capture/captures/` are gitignored: they contain live
+  tokens and the reference admin password. Only redacted fixtures are
+  committed.
+
 ## 2026-08-25 — Step 1: repo skeleton
 
 **Completed:**
