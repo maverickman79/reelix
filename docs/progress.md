@@ -117,6 +117,21 @@ stay scannable. Prune entries older than the current minor version into
   persistence and idempotency tests run without ffprobe installed on the host.
 - Deleting files that vanished from disk is deliberately not implemented. A
   transient mount failure would otherwise wipe a library.
+- **Development now brings the stack up with the test override by default:**
+
+  ```
+  docker compose -f docker-compose.yml -f docker-compose.test.yml up -d
+  ```
+
+  Plain `docker compose up -d` silently reverts Postgres to publishing no
+  host port, which broke three test runs in one session before this was
+  settled. The friction costs more than the exposure.
+
+  **The canonical stack is unchanged and still publishes no host port for
+  Postgres.** `docker-compose.test.yml` is a dev convenience only: it binds
+  `127.0.0.1:5432`, so the database is reachable from this machine alone —
+  not from the tailnet, not from the internet. It must not be merged into
+  `docker-compose.yml`, and a deployment should never use it.
 
 ## 2026-08-26 — Step 3: native API, users and libraries
 

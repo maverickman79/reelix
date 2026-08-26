@@ -10,7 +10,15 @@
 # port and not 0.0.0.0. The database is reachable from this machine only; it is
 # not exposed to the tailnet, and certainly not to the internet.
 #
-# Do not merge this into the canonical stack.
+# Development brings the stack up with this override by default:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.test.yml up -d
+#
+# Plain `docker compose up -d` reverts Postgres to publishing no host port,
+# which silently breaks the integration tests.
+#
+# Do not merge this into the canonical stack, and never use it in a
+# deployment. docker-compose.yml on its own remains the deployable article.
 
 services:
   postgres:
