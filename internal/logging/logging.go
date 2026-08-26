@@ -6,6 +6,7 @@
 package logging
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"strings"
@@ -41,6 +42,31 @@ func New(w io.Writer, format, level string) *slog.Logger {
 // subsystem should log through one of these rather than through the root.
 func Component(l *slog.Logger, name string) *slog.Logger {
 	return l.With(slog.String(KeyComponent, name))
+}
+
+// ctxKey is unexported so no other package can collide with it.
+type ctxKey int
+
+const ctxKeyLogger ctxKey = iota
+
+// WithLogger attaches a request-scoped logger to ctx.
+//
+// The HTTP middleware puts a logger carrying the request_id here so that any
+// package handling the request can log against it without being passed one.
+func WithLogger(ctx context.Context, l *slog.Logger) context.Context {
+	return context.WithValue(ctx, ctxKeyLogger, l)
+}
+
+// FromContext returns the request-scoped logger, falling back to the default
+// logger when called outside a request.
+//
+// The fallback exists so a missing logger is a slightly less useful log line
+// rather than a nil dereference in a handler.
+func FromContext(ctx context.Context) *slog.Logger {
+	if l, ok := ctx.Value(ctxKeyLogger).(*slog.Logger); ok {
+		return l
+	}
+	return slog.Default()
 }
 
 func parseLevel(level string) slog.Level {

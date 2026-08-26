@@ -14,10 +14,7 @@ import (
 // ctxKey is unexported so no other package can collide with these context keys.
 type ctxKey int
 
-const (
-	ctxKeyRequestID ctxKey = iota
-	ctxKeyLogger
-)
+const ctxKeyRequestID ctxKey = iota
 
 // requestIDHeader lets a reverse proxy supply a correlation ID. An
 // unrecognisable value is replaced rather than propagated, so the field can
@@ -36,7 +33,7 @@ func requestLogger(base *slog.Logger) func(http.Handler) http.Handler {
 			log := base.With(slog.String(logging.KeyRequestID, id))
 
 			ctx := context.WithValue(r.Context(), ctxKeyRequestID, id)
-			ctx = context.WithValue(ctx, ctxKeyLogger, log)
+			ctx = logging.WithLogger(ctx, log)
 
 			rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 			rec.Header().Set(requestIDHeader, id)
@@ -76,14 +73,9 @@ func requestID(r *http.Request) string {
 	return uuid.NewV7().String()
 }
 
-// loggerFrom returns the request-scoped logger, or a discard-free fallback when
-// called outside a request (which should not happen, but must not panic).
-func loggerFrom(ctx context.Context) *slog.Logger {
-	if log, ok := ctx.Value(ctxKeyLogger).(*slog.Logger); ok {
-		return log
-	}
-	return slog.Default()
-}
+// loggerFrom returns the request-scoped logger. The storage lives in
+// internal/logging so the API packages can read it too.
+func loggerFrom(ctx context.Context) *slog.Logger { return logging.FromContext(ctx) }
 
 // statusRecorder captures the status code and body size for the access log.
 type statusRecorder struct {

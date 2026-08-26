@@ -1,10 +1,10 @@
 // Package server owns the HTTP listener, its routes, and its shutdown
 // behaviour.
 //
-// Step 1 serves exactly one route: GET /health. The native API (/api/v1/*) and
-// the Jellyfin compatibility surface are registered here in later steps; the
-// compatibility handlers stay behind the internal/compat/jellyfin package
-// boundary and never leak their types into this package.
+// It serves GET /health and mounts the native API under /api/v1. The Jellyfin
+// compatibility surface is registered here in a later step; those handlers stay
+// behind the internal/compat/jellyfin package boundary and never leak their
+// types into this package.
 package server
 
 import (
@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"time"
 
+	v1 "github.com/maverickman79/reelix/internal/api/v1"
 	"github.com/maverickman79/reelix/internal/config"
 	"github.com/maverickman79/reelix/internal/logging"
 )
@@ -37,7 +38,10 @@ type Server struct {
 }
 
 // New builds a Server. It does not bind a port; call Run for that.
-func New(cfg config.HTTP, log *slog.Logger, version string) *Server {
+//
+// nativeAPI is mounted under /api/v1. It may be nil, which serves only
+// /health — useful in tests that have no database.
+func New(cfg config.HTTP, log *slog.Logger, version string, nativeAPI *v1.API) *Server {
 	s := &Server{
 		cfg:     cfg,
 		log:     logging.Component(log, "http"),
@@ -46,6 +50,12 @@ func New(cfg config.HTTP, log *slog.Logger, version string) *Server {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.handleHealth())
+
+	if nativeAPI != nil {
+		// StripPrefix so the API package writes its patterns relative to its
+		// own root and does not repeat the version in every route.
+		mux.Handle(v1.Prefix+"/", http.StripPrefix(v1.Prefix, nativeAPI.Routes()))
+	}
 
 	s.http = &http.Server{
 		Addr:              cfg.Addr,
