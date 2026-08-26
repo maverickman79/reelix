@@ -9,10 +9,12 @@ import (
 	"os/signal"
 	"syscall"
 
+	v1 "github.com/maverickman79/reelix/internal/api/v1"
 	"github.com/maverickman79/reelix/internal/config"
 	"github.com/maverickman79/reelix/internal/db"
 	"github.com/maverickman79/reelix/internal/logging"
 	"github.com/maverickman79/reelix/internal/server"
+	"github.com/maverickman79/reelix/internal/service"
 )
 
 // version is stamped at build time:
@@ -83,7 +85,12 @@ func run() error {
 		return fail("migrate", fmt.Errorf("migrating database: %w", err))
 	}
 
-	srv := server.New(cfg.HTTP, log, version)
+	nativeAPI := v1.New(
+		service.NewAuthService(pool),
+		service.NewLibraryService(pool),
+	)
+
+	srv := server.New(cfg.HTTP, log, version, nativeAPI)
 	if err := srv.Run(ctx); err != nil {
 		return fail("serve", fmt.Errorf("http server: %w", err))
 	}
