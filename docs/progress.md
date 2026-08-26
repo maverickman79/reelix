@@ -21,6 +21,103 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-26 — Step 4: scanner and probe
+
+**Completed:**
+- `internal/media`: filename parsing, filesystem walk, and an `ffprobe`
+  wrapper. No database or HTTP dependencies.
+- `0003_jobs.sql`: `jobs` table with state, progress, current item, timings,
+  and error; a partial unique index allowing one active scan per library.
+  `media_items` gains `source_path` with `UNIQUE (library_id, source_path)`.
+- `internal/service/scan.go`: `ScanService` — walk, probe, persist, one
+  transaction per file, progress written on a timer.
+- `internal/repository/job.go`: `JobRepository`, including `FailOrphaned`.
+- API: `POST /libraries/{id}/scan` (admin, 202), `GET /jobs/{id}`,
+  `GET /jobs`.
+- Dockerfile installs `jellyfin-ffmpeg7` (7.1.4-3-bookworm) from
+  repo.jellyfin.org, pinned to the 7.x series. `REELIX_FFPROBE_PATH`,
+  `REELIX_FFMPEG_PATH`, and `REELIX_PROBE_TIMEOUT` are configurable; ffprobe
+  is version-checked at startup so a missing binary fails immediately.
+- `.env` sets `REELIX_MEDIA_DIR=./hack/capture/test-media`. The mount already
+  existed in `docker-compose.yml` as `${REELIX_MEDIA_DIR:-./media}:/media:ro`
+  and was pointing at a directory that did not exist — an unset variable, not
+  a missing bind. The canonical compose file is unchanged.
+- Library path updated `/media/movies` → `/media` with a one-off
+  `UPDATE library_paths`. There is no update-library endpoint and adding one
+  was out of scope.
+
+**Verified:**
+- `gofmt`, `go vet ./...` clean. 108 tests pass with a database; all
+  integration tests skip cleanly without `REELIX_TEST_DB_DSN`.
+- **Completion criterion, populates Postgres:** scanning `/media` indexed all
+  six files — Congo 1995, Fight Club 1999, Gangland 2025, Idiocracy 2006,
+  The Legend of Aang 2026, The Singers 2026 — with real durations
+  (18–139 min), containers, and 136 stream rows. Fight Club's 71GB remux
+  alone contributed 63 streams.
+- **Completion criterion, re-scan updates rather than duplicates:** second
+  scan left items/files/streams at 6/6/136 and the md5 of every item id and
+  source path byte-identical. Log summary: first scan `probed=6 skipped=0`,
+  second `probed=0 skipped=6`, 749ms then 18ms.
+- Sample-directory skip, grouping, extension filter, hidden entries, awkward
+  filenames, determinism, and cancellation covered in `internal/media`;
+  sample-skip covered again end-to-end through persistence.
+- Probe failure on one file leaves the other files indexed and the job
+  completed; the bad file is left unrecorded so the next scan retries it.
+
+**In flight:**
+- Nothing.
+
+**Blocked:**
+- Nothing.
+
+**Next step:**
+- Step 5: compatibility discovery and auth — `/System/Info`,
+  `/System/Info/Public`, authorization header parsing, authenticate-by-name,
+  token issuance, `/Users/Me`, validated against the Step 0 fixtures.
+
+**Decisions made:**
+- **Image size: 151MB → 558MB.** jellyfin-ffmpeg7 is 400MB of that, and it is
+  unavoidable — those builds carry the QSV, NVENC, and VA-API plumbing the
+  constitution chose them for. Worth knowing before deploy: image pulls are
+  now a ~3.7x heavier operation. Trimming would mean building a custom FFmpeg,
+  which the constitution explicitly rules out.
+- `media_items.source_path` added. `media_items` had no natural key, so a
+  re-scan could not identify the item it created last time and produced
+  duplicates even though `media_files.path` de-duplicated files correctly.
+  It is the movie's directory, or the file's own path for a file sitting in a
+  library root.
+- Name parsing extends slightly past the MVP's literal `Title (Year)`: dots
+  and underscores normalise to spaces and a bare year token counts. Five of
+  the six test files are scene-named, so the strict reading produced usable
+  titles for exactly one of them. Still not a release parser — no edition,
+  resolution, codec, or group handling.
+- A delimited year outranks a bare one. Found while writing the tests:
+  "Blade Runner 2049 (2017)" parsed as year 2049 under a single pattern.
+- **Known limitation: re-probe is triggered by a size change, not mtime.**
+  `media_files` has no mtime column — cut in Step 2 and deliberately not added
+  now — so a file edited in place without changing length will not be
+  re-probed. Clearing `probed_at` forces one. Revisit if it bites.
+- One `media_item` per directory, so a release folder with several files is
+  one movie with several `media_files` — the constitution's `Movie != File`.
+- Sample directories are skipped by name only. A minimum-size heuristic would
+  also exclude legitimate short films, and directory naming is the actual
+  convention. The current test library has no such directories; the rsync that
+  populated it used an explicit file list. Covered synthetically instead.
+- Probing is sequential. Progress accounting stays simple and these are large
+  I/O-bound reads.
+- One bad file does not fail a scan: it is counted, logged, and left
+  unrecorded so the next scan retries it. Only a walk-level failure — such as
+  a library root that has vanished — fails the job.
+- Jobs still marked running at startup are failed. They run in-process, so
+  their goroutine died with the previous process; leaving them would also
+  block the library permanently through the partial unique index.
+- The scan runs on `context.WithoutCancel` of the request context: it must
+  outlive the HTTP request that started it.
+- `ScanService` takes a `Prober` interface declared in the service package, so
+  persistence and idempotency tests run without ffprobe installed on the host.
+- Deleting files that vanished from disk is deliberately not implemented. A
+  transient mount failure would otherwise wipe a library.
+
 ## 2026-08-26 — Step 3: native API, users and libraries
 
 **Completed:**
