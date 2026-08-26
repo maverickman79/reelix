@@ -21,6 +21,96 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-26 — Step 3: native API, users and libraries
+
+**Completed:**
+- `internal/auth`: argon2id password hashing in PHC string format
+  (`$argon2id$v=19$m=65536,t=3,p=4$…`), constant-time verification, and
+  native API tokens — 32 bytes of CSPRNG, `rlx_` prefix, SHA-256 at rest.
+- `0002_api_tokens.sql`: `api_tokens` (id, user_id, token_hash, created_at,
+  expires_at).
+- `internal/service`: `AuthService` (first-run setup, login, token
+  resolution) and `LibraryService` (create with paths, list). Services own
+  their transaction boundaries.
+- `internal/api/v1`: handlers, DTOs, bearer middleware, error mapping.
+  Mounted at `/api/v1` by `internal/server`.
+- `internal/logging` gained `WithLogger`/`FromContext`, so the API package
+  reads the same request-scoped logger the HTTP middleware installs. The
+  storage moved out of `internal/server`, which previously owned the key.
+- Endpoints: `POST /setup`, `POST /auth/login`, `GET /me`,
+  `POST /libraries`, `GET /libraries`.
+
+**Verified:**
+- `gofmt`, `go vet ./...` clean. 80 tests pass with a database; all
+  integration tests skip cleanly without `REELIX_TEST_DB_DSN`.
+- **Completion criteria, by curl against the compose stack:** created the
+  first admin (201), refused a second (409), authenticated, rejected a wrong
+  password (401), rejected an unauthenticated request (401), created a movie
+  library with one path (201), listed it back (200).
+- **Expired token with its row still present is rejected** — the row is left
+  in place and only `expires_at` moved into the past; the request returns
+  401. A companion test moves expiry one second into the future and asserts
+  200, so the comparison cannot be inverted without a failure.
+- Eight concurrent `POST /setup` requests produce exactly one administrator.
+- App logs across the whole flow contain zero occurrences of the token, the
+  password, or the password hash. No response body mentions a password field.
+- The real deployment applied migration 2 on restart and stayed healthy.
+
+**In flight:**
+- Nothing.
+
+**Blocked:**
+- Nothing.
+
+**Next step:**
+- Step 4: scanner and probe. Walk the library path, identify video files, run
+  `ffprobe`, persist items, files, and streams as a background job.
+
+**Decisions made:**
+- Dependency added: `golang.org/x/crypto` v0.55.0 for argon2id, pulling
+  `golang.org/x/sys` as indirect. Nine modules total. PBKDF2 is in the stdlib
+  now (`crypto/pbkdf2`) and would have been zero dependencies, but it is not
+  memory-hard, which is the property that makes GPU and ASIC cracking
+  expensive — the whole threat model for a stored password hash.
+- **Argon2id at m=64MiB means each concurrent login holds 64MiB for the
+  duration of the hash. Login concurrency is therefore bounded by the
+  container's memory limit, not by CPU.** The unknown-user path costs the
+  same, because it runs a dummy verification to equalise timing — so a
+  credential-stuffing attempt against nonexistent usernames is exactly the
+  shape of traffic that hits this hardest. Not a problem at 0.0.1's scale and
+  not being solved now; recorded so it is not a surprise later. If it needs
+  bounding, a semaphore around hashing is the answer, not weaker parameters.
+- Tokens are hashed with SHA-256, not argon2. A 256-bit random token has no
+  guessable structure, so a slow hash protects nothing, while paying argon2
+  on every authenticated request would be a self-inflicted denial of service.
+- **Token expiry is filtered inside the SQL query** (`expires_at > now()`),
+  not compared after loading the row. Nothing deletes expired tokens — there
+  is no sweeper and `DeleteExpired` is not scheduled — so their rows persist
+  indefinitely and a lookup matching on `token_hash` alone would authenticate
+  them. Filtering in SQL also means no call site can forget the check.
+  PostgreSQL's `now()` is the transaction timestamp, so expiry is judged by
+  the database's clock, not the application's.
+- First-run setup takes `pg_advisory_xact_lock` and performs its count and
+  insert in one transaction. The endpoint is necessarily unauthenticated, so
+  "succeeds exactly once" is what stops an attacker racing the operator on a
+  freshly started server.
+- Unknown username and wrong password return an identical code and message,
+  and the unknown-user path performs a dummy hash so the two take similar
+  time. Neither the body nor the latency should identify which accounts exist.
+- Password minimum is 12 runes — runes, not bytes, so a short multi-byte
+  password cannot slip through. No composition rules: they push people toward
+  predictable substitutions without adding entropy.
+- Native API JSON is camelCase with RFC3339 timestamps and **dashed** UUIDs.
+  The 32-character dashless form is a Jellyfin convention belonging solely to
+  the compatibility layer.
+- Request bodies are capped at 64KiB and reject unknown fields, so a
+  misspelled key is an error rather than a silently ignored one.
+- Collections are wrapped in an object (`{"libraries":[…]}`) rather than
+  returned as a bare array, leaving room for pagination later. Empty
+  collections marshal as `[]`, never `null`.
+- `server.New` takes the native API as a parameter and accepts nil, so
+  `/health` remains testable with no database wired.
+
 ## 2026-08-26 — Startup resilience: database connect retry
 
 **Completed:**
