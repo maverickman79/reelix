@@ -1,0 +1,97 @@
+{
+  "call_order": 56,
+  "request": {
+    "method": "GET",
+    "path": "/Items/6763e17f-03d6-f385-1959-b6b784026495/Similar",
+    "query": {
+      "userId": "89daa0a7-0eb8-4123-a6d9-19a751f383e8",
+      "limit": "25",
+      "fields": "PrimaryImageAspectRatio"
+    },
+    "headers": {
+      "Accept": "application/json, application/octet-stream;q=0.9, */*;q=0.8",
+      "Authorization": "REDACTED",
+      "User-Agent": "Wholphin/1.0.7-0-g2b9af1e8 via jellyfin-sdk-kotlin (OkHttp/4.12.0)",
+      "Host": "jellyfin-ref:8096",
+      "Connection": "Keep-Alive",
+      "Accept-Encoding": "gzip"
+    },
+    "body": {
+      "mimeType": "",
+      "text": ""
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8",
+      "Server": "Kestrel",
+      "Content-Encoding": "gzip",
+      "Transfer-Encoding": "chunked",
+      "Vary": "Accept-Encoding"
+    },
+    "body": {
+      "mimeType": "application/json; charset=utf-8",
+      "json": {
+        "Items": [
+          {
+            "Name": "Fight Club",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "4d98ccb85e3ccdc8616e7df681c1dae6",
+            "CanDelete": true,
+            "HasSubtitles": true,
+            "Container": "mkv",
+            "SortName": "fight club",
+            "PremiereDate": "1999-10-15T00:00:00.0000000Z",
+            "CriticRating": 81,
+            "OfficialRating": "R",
+            "ChannelId": null,
+            "Overview": "A ticking-time-bomb insomniac and a slippery soap salesman channel primal male aggression into a shocking new form of therapy. Their concept catches on, with underground \"fight clubs\" forming in every town, until an eccentric gets in the way and ignites an out-of-control spiral toward oblivion.",
+            "CommunityRating": 8.437,
+            "RunTimeTicks": 83485490000,
+            "ProductionYear": 1999,
+            "IsFolder": false,
+            "Type": "Movie",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 1,
+              "IsFavorite": false,
+              "LastPlayedDate": "2026-08-26T15:56:49.4120546Z",
+              "Played": false,
+              "Key": "4d98ccb8-5e3c-cdc8-616e-7df681c1dae6",
+              "ItemId": "4d98ccb85e3ccdc8616e7df681c1dae6"
+            },
+            "PrimaryImageAspectRatio": 0.6666666666666666,
+            "VideoType": "VideoFile",
+            "ImageTags": {
+              "Thumb": "df94ce6173a48af94baeaee27310c834",
+              "Logo": "41fdc1227dd30c6ff181b17ed54c8916",
+              "Primary": "6041165eca7db2e412588f2739b7ecfe"
+            },
+            "BackdropImageTags": [
+              "f08acad5ccc673737bcd63ce89f2d851"
+            ],
+            "ImageBlurHashes": {
+              "Backdrop": {
+                "f08acad5ccc673737bcd63ce89f2d851": "W330HNEM.SJ:-.NFT1oLXmo#W=o}8w-pDN$$IUxv$*MxxtM_xuRk"
+              },
+              "Thumb": {
+                "df94ce6173a48af94baeaee27310c834": "WPJtMMs;7VSz,I-;%gtRM{w|xbg30_%MviNF%gsCspxHR*OT%f%2"
+              },
+              "Logo": {
+                "41fdc1227dd30c6ff181b17ed54c8916": "HUNC^R6K1?FF6KWoJi$7N?a}SKWnJisVN?$8wzwz"
+              },
+              "Primary": {
+                "6041165eca7db2e412588f2739b7ecfe": "dQKAmN?H1YpH~W%MNGj[C1XSvOrs%fofR6WV}ui{X,tR"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Video"
+          }
+        ],
+        "TotalRecordCount": 1,
+        "StartIndex": 0
+      }
+    }
+  }
+}

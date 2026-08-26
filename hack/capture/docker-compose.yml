@@ -14,14 +14,14 @@ services:
   jellyfin-ref:
     image: jellyfin/jellyfin:10.11.8
     container_name: reelix-jellyfin-ref
-    user: "${UID:-1000}:${GID:-1000}"
+    user: "1000:1000"
     volumes:
       - ./ref-config:/config
       - ./ref-cache:/cache
       - ./test-media:/media:ro
     ports:
       # Exposed only for first-run setup in a browser. The client must use 8097.
-      - "8096:8096"
+      - "100.95.0.122:8096:8096"
     restart: "no"
 
   mitmproxy:
@@ -37,7 +37,7 @@ services:
     volumes:
       - ./captures:/captures
     ports:
-      - "8097:8097"
+      - "100.95.0.122:8097:8097"
     depends_on:
       - jellyfin-ref
     restart: "no"

@@ -1,0 +1,37 @@
+{
+  "call_order": 188,
+  "request": {
+    "method": "POST",
+    "path": "/Sessions/Playing/Stopped",
+    "query": {},
+    "headers": {
+      "Accept": "application/json, application/octet-stream;q=0.9, */*;q=0.8",
+      "Authorization": "REDACTED",
+      "User-Agent": "Wholphin/1.0.7-0-g2b9af1e8 via jellyfin-sdk-kotlin (OkHttp/4.12.0)",
+      "Content-Type": "application/json; charset=utf-8",
+      "Content-Length": "141",
+      "Host": "jellyfin-ref:8096",
+      "Connection": "Keep-Alive",
+      "Accept-Encoding": "gzip"
+    },
+    "body": {
+      "mimeType": "application/json; charset=utf-8",
+      "json": {
+        "ItemId": "0584b843-8107-38ce-65e8-60027ca07137",
+        "PositionTicks": 154740000,
+        "PlaySessionId": "e326b815ed0e452bab9558c8f21d817b",
+        "Failed": false
+      }
+    }
+  },
+  "response": {
+    "status": 204,
+    "headers": {
+      "Server": "Kestrel"
+    },
+    "body": {
+      "mimeType": "",
+      "text": ""
+    }
+  }
+}

@@ -1,0 +1,761 @@
+{
+  "call_order": 177,
+  "request": {
+    "method": "GET",
+    "path": "/Items/0584b843-8107-38ce-65e8-60027ca07137",
+    "query": {},
+    "headers": {
+      "Accept": "application/json, application/octet-stream;q=0.9, */*;q=0.8",
+      "Authorization": "REDACTED",
+      "User-Agent": "Wholphin/1.0.7-0-g2b9af1e8 via jellyfin-sdk-kotlin (OkHttp/4.12.0)",
+      "Host": "jellyfin-ref:8096",
+      "Connection": "Keep-Alive",
+      "Accept-Encoding": "gzip"
+    },
+    "body": {
+      "mimeType": "",
+      "text": ""
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8",
+      "Server": "Kestrel",
+      "Content-Encoding": "gzip",
+      "Transfer-Encoding": "chunked",
+      "Vary": "Accept-Encoding"
+    },
+    "body": {
+      "mimeType": "application/json; charset=utf-8",
+      "json": {
+        "Name": "Congo",
+        "OriginalTitle": "Congo",
+        "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+        "Id": "0584b843810738ce65e860027ca07137",
+        "Etag": "c287efc8e17336d41ab0e45edd479986",
+        "DateCreated": "2026-06-20T07:47:41.3473157Z",
+        "CanDelete": true,
+        "CanDownload": true,
+        "HasSubtitles": true,
+        "Container": "mkv",
+        "SortName": "congo",
+        "PremiereDate": "1995-06-09T00:00:00.0000000Z",
+        "ExternalUrls": [
+          {
+            "Name": "IMDb",
+            "Url": "https://www.imdb.com/title/tt0112715"
+          },
+          {
+            "Name": "TMDB",
+            "Url": "https://www.themoviedb.org/movie/10329"
+          }
+        ],
+        "MediaSources": [
+          {
+            "Protocol": "File",
+            "Id": "0584b843810738ce65e860027ca07137",
+            "Path": "/media/Congo.1995.Remastered.1080p.BluRay.x264-OFT/Congo.1995.Remastered.1080p.BluRay.x264-OFT.mkv",
+            "Type": "Default",
+            "Container": "mkv",
+            "Size": 5198793748,
+            "Name": "Congo.1995.Remastered.1080p.BluRay.x264-OFT",
+            "IsRemote": false,
+            "ETag": "dae8763f16ca2eb80d40440e058b7a8f",
+            "RunTimeTicks": 65095080000,
+            "ReadAtNativeFramerate": false,
+            "IgnoreDts": false,
+            "IgnoreIndex": false,
+            "GenPtsInput": false,
+            "SupportsTranscoding": true,
+            "SupportsDirectStream": true,
+            "SupportsDirectPlay": true,
+            "IsInfiniteStream": false,
+            "UseMostCompatibleTranscodingProfile": false,
+            "RequiresOpening": false,
+            "RequiresClosing": false,
+            "RequiresLooping": false,
+            "SupportsProbing": true,
+            "VideoType": "VideoFile",
+            "MediaStreams": [
+              {
+                "Codec": "h264",
+                "Language": "eng",
+                "ColorSpace": "bt709",
+                "ColorTransfer": "bt709",
+                "ColorPrimaries": "bt709",
+                "TimeBase": "1/1000",
+                "VideoRange": "SDR",
+                "VideoRangeType": "SDR",
+                "AudioSpatialFormat": "None",
+                "DisplayTitle": "1080p H264 SDR",
+                "NalLengthSize": "4",
+                "IsInterlaced": false,
+                "IsAVC": true,
+                "BitRate": 6389169,
+                "BitDepth": 8,
+                "RefFrames": 1,
+                "IsDefault": true,
+                "IsForced": false,
+                "IsHearingImpaired": false,
+                "Height": 1080,
+                "Width": 1920,
+                "AverageFrameRate": 23.976025,
+                "RealFrameRate": 23.976025,
+                "ReferenceFrameRate": 23.976025,
+                "Profile": "High",
+                "Type": "Video",
+                "AspectRatio": "16:9",
+                "Index": 0,
+                "IsExternal": false,
+                "IsTextSubtitleStream": false,
+                "SupportsExternalStream": false,
+                "PixelFormat": "yuv420p",
+                "Level": 40,
+                "IsAnamorphic": false
+              },
+              {
+                "Codec": "ac3",
+                "Language": "eng",
+                "TimeBase": "1/1000",
+                "Title": "Surround AC3 5.1",
+                "VideoRange": "Unknown",
+                "VideoRangeType": "Unknown",
+                "AudioSpatialFormat": "None",
+                "LocalizedDefault": "Default",
+                "LocalizedExternal": "External",
+                "DisplayTitle": "Surround AC3 5.1 - English - Dolby Digital - Default",
+                "IsInterlaced": false,
+                "IsAVC": false,
+                "ChannelLayout": "5.1",
+                "BitRate": 448000,
+                "Channels": 6,
+                "SampleRate": 48000,
+                "IsDefault": true,
+                "IsForced": false,
+                "IsHearingImpaired": false,
+                "Type": "Audio",
+                "Index": 1,
+                "IsExternal": false,
+                "IsTextSubtitleStream": false,
+                "SupportsExternalStream": false,
+                "Level": 0
+              },
+              {
+                "Codec": "ac3",
+                "Language": "eng",
+                "TimeBase": "1/1000",
+                "Title": "Commentary by author/screenwriter Kelly Goodner and film historian Jim Hemphill",
+                "VideoRange": "Unknown",
+                "VideoRangeType": "Unknown",
+                "AudioSpatialFormat": "None",
+                "LocalizedDefault": "Default",
+                "LocalizedExternal": "External",
+                "DisplayTitle": "Commentary by author/screenwriter Kelly Goodner and film historian Jim Hemphill - English - Dolby Digital - Stereo",
+                "IsInterlaced": false,
+                "IsAVC": false,
+                "ChannelLayout": "stereo",
+                "BitRate": 192000,
+                "Channels": 2,
+                "SampleRate": 48000,
+                "IsDefault": false,
+                "IsForced": false,
+                "IsHearingImpaired": false,
+                "Type": "Audio",
+                "Index": 2,
+                "IsExternal": false,
+                "IsTextSubtitleStream": false,
+                "SupportsExternalStream": false,
+                "Level": 0
+              },
+              {
+                "Codec": "subrip",
+                "Language": "eng",
+                "TimeBase": "1/1000",
+                "Title": "English SDH",
+                "VideoRange": "Unknown",
+                "VideoRangeType": "Unknown",
+                "AudioSpatialFormat": "None",
+                "LocalizedUndefined": "Undefined",
+                "LocalizedDefault": "Default",
+                "LocalizedForced": "Forced",
+                "LocalizedExternal": "External",
+                "LocalizedHearingImpaired": "Hearing Impaired",
+                "DisplayTitle": "English SDH - SUBRIP",
+                "IsInterlaced": false,
+                "IsAVC": false,
+                "IsDefault": false,
+                "IsForced": false,
+                "IsHearingImpaired": false,
+                "Height": 0,
+                "Width": 0,
+                "Type": "Subtitle",
+                "Index": 3,
+                "IsExternal": false,
+                "IsTextSubtitleStream": true,
+                "SupportsExternalStream": true,
+                "Level": 0
+              }
+            ],
+            "MediaAttachments": [],
+            "Formats": [],
+            "Bitrate": 7029169,
+            "RequiredHttpHeaders": {},
+            "TranscodingSubProtocol": "http",
+            "DefaultAudioStreamIndex": 1,
+            "HasSegments": false
+          }
+        ],
+        "CriticRating": 24,
+        "ProductionLocations": [
+          "United States of America",
+          "Uganda",
+          "Kenya",
+          "Tanzania",
+          "Costa Rica"
+        ],
+        "Path": "/media/Congo.1995.Remastered.1080p.BluRay.x264-OFT/Congo.1995.Remastered.1080p.BluRay.x264-OFT.mkv",
+        "EnableMediaSourceDisplay": true,
+        "OfficialRating": "PG-13",
+        "ChannelId": null,
+        "Overview": "Eight people embark on an expedition into the Congo, a mysterious expanse of unexplored Africa, where human greed and the laws of nature have gone berserk.",
+        "Taglines": [
+          "Where you are the endangered species."
+        ],
+        "Genres": [
+          "Action",
+          "Adventure",
+          "Science Fiction"
+        ],
+        "CommunityRating": 5.615,
+        "RunTimeTicks": 65095080000,
+        "PlayAccess": "Full",
+        "ProductionYear": 1995,
+        "RemoteTrailers": [
+          {
+            "Url": "https://www.youtube.com/watch?v=QpdbdpOqLuY",
+            "Name": "Vinegar Syndrome Promo Trailer"
+          },
+          {
+            "Url": "https://www.youtube.com/watch?v=uKc9OSkIDK0",
+            "Name": "Trailer"
+          }
+        ],
+        "ProviderIds": {
+          "Imdb": "tt0112715",
+          "Tmdb": "10329"
+        },
+        "IsHD": true,
+        "IsFolder": false,
+        "ParentId": "92fde71d0ec577b531e7b3427b223bed",
+        "Type": "Movie",
+        "People": [
+          {
+            "Name": "Laura Linney",
+            "Id": "f95a784e81af19eb566b28666314c419",
+            "Role": "Dr. Karen Ross",
+            "Type": "Actor",
+            "PrimaryImageTag": "a5bf938afa7ad844cfb4d839e2f66ec8",
+            "ImageBlurHashes": {
+              "Primary": {
+                "a5bf938afa7ad844cfb4d839e2f66ec8": "dUL30_+]0L-V9sxuI;kB-pw^r?WBxVt6ofn$NHj]ozt6"
+              }
+            }
+          },
+          {
+            "Name": "Dylan Walsh",
+            "Id": "f8fab3d3b087a68d19a9c5f1bb7cb82b",
+            "Role": "Dr. Peter Elliot",
+            "Type": "Actor",
+            "PrimaryImageTag": "cd8daec19929a0b68e969c86f4aefdb6",
+            "ImageBlurHashes": {
+              "Primary": {
+                "cd8daec19929a0b68e969c86f4aefdb6": "dVDIa$s.0eNGR4s:o#bIE+Rj$$ofNckCoIaeM{WBxbof"
+              }
+            }
+          },
+          {
+            "Name": "Ernie Hudson",
+            "Id": "e66f6aafac87f911b5cc606d6825823d",
+            "Role": "Captain Monroe Kelly",
+            "Type": "Actor",
+            "PrimaryImageTag": "148247dcc040c997eb8b0bf24a9b2284",
+            "ImageBlurHashes": {
+              "Primary": {
+                "148247dcc040c997eb8b0bf24a9b2284": "dGA,Rg~p%$?c?H%MtRxv56D%ROMx9aIURPM{ofofs:of"
+              }
+            }
+          },
+          {
+            "Name": "Tim Curry",
+            "Id": "9bb479ad68de565257117f6df776af56",
+            "Role": "Herkermer Homolka",
+            "Type": "Actor",
+            "PrimaryImageTag": "be696d3a6394ce3d40a80e2aad535490",
+            "ImageBlurHashes": {
+              "Primary": {
+                "be696d3a6394ce3d40a80e2aad535490": "dYDSE?xa0KM{R4n$x]ozS#WBi_s:NdkCxZV@E0WB%Mt6"
+              }
+            }
+          },
+          {
+            "Name": "Grant Heslov",
+            "Id": "77f8f8f77b78a6b057cd906d588b83ec",
+            "Role": "Richard",
+            "Type": "Actor",
+            "PrimaryImageTag": "ffc11221a753202710717c8950ec99b9",
+            "ImageBlurHashes": {
+              "Primary": {
+                "ffc11221a753202710717c8950ec99b9": "dgI=46%3Pqtn%#ogx]o#5Sawi_WBu6fitStRTJR+$$t7"
+              }
+            }
+          },
+          {
+            "Name": "Joe Don Baker",
+            "Id": "e3d014fa06662ec4775facaba1ec6639",
+            "Role": "R.B. Travis",
+            "Type": "Actor",
+            "PrimaryImageTag": "edf6d61b01ea423fe28a5faa70bdd975",
+            "ImageBlurHashes": {
+              "Primary": {
+                "edf6d61b01ea423fe28a5faa70bdd975": "dVJRdVayof-;~qM{-;WB4nD%%MWBayIUWBxu-;WBIUWB"
+              }
+            }
+          },
+          {
+            "Name": "Misty Rosas",
+            "Id": "b46443c38da2805c0c07583d57527713",
+            "Role": "Amy",
+            "Type": "Actor",
+            "PrimaryImageTag": "368e8efdb09f87268586741613956db8",
+            "ImageBlurHashes": {
+              "Primary": {
+                "368e8efdb09f87268586741613956db8": "dsJQl{RPEM%101tRRjM|t,n$-Vf+D%RjxaxZozo#NGR+"
+              }
+            }
+          },
+          {
+            "Name": "Mary Ellen Trainor",
+            "Id": "9e38fc3822226def4cc391f12192d044",
+            "Role": "Moira",
+            "Type": "Actor",
+            "PrimaryImageTag": "efe15f8828888624ee6d34e2c25e3a81",
+            "ImageBlurHashes": {
+              "Primary": {
+                "efe15f8828888624ee6d34e2c25e3a81": "dZFqt7%10gNHxts:RjR*57R*%1oLV@WBoffkIpWCt6oe"
+              }
+            }
+          },
+          {
+            "Name": "Stuart Pankin",
+            "Id": "00dd687f900f998f22e20b112aa41912",
+            "Role": "Boyd",
+            "Type": "Actor",
+            "PrimaryImageTag": "5566df1843cce08ef888269582d41cc6",
+            "ImageBlurHashes": {
+              "Primary": {
+                "5566df1843cce08ef888269582d41cc6": "dWD+9|%20fI:#*RiJAkDNGs:$*RjJ.f+w]jZE1Rjxas;"
+              }
+            }
+          },
+          {
+            "Name": "Carolyn Seymour",
+            "Id": "638195f09e68e43b9cc253bdca43e3f3",
+            "Role": "Eleanor Romy",
+            "Type": "Actor",
+            "PrimaryImageTag": "aa9d0cd7db93af1f00aeefa80f7ed251",
+            "ImageBlurHashes": {
+              "Primary": {
+                "aa9d0cd7db93af1f00aeefa80f7ed251": "dSHxys~q?b~qxu-;%M-:?aRjt7of%MM{WBxu-;xuRjWV"
+              }
+            }
+          },
+          {
+            "Name": "Romy Rosemont",
+            "Id": "a8047c55010575966d1f9930c8467110",
+            "Role": "Assistant",
+            "Type": "Actor",
+            "PrimaryImageTag": "fca17c8dd83eb04d209386fae60208c5",
+            "ImageBlurHashes": {
+              "Primary": {
+                "fca17c8dd83eb04d209386fae60208c5": "dqIgfZf50ft7M{xZxZRkIpR+xaoMNHfkj[WBWYfRaeR*"
+              }
+            }
+          },
+          {
+            "Name": "Lorene Noh",
+            "Id": "5fb9d7f836afeb7c8569a87de616055f",
+            "Role": "Amy",
+            "Type": "Actor",
+            "PrimaryImageTag": "5c75544bc297b5ca622875fb190dc824",
+            "ImageBlurHashes": {
+              "Primary": {
+                "5c75544bc297b5ca622875fb190dc824": "dLB:plxD0KX9-Tt8NbITENjY%1NHInRkxu%L9ZWV-pxt"
+              }
+            }
+          },
+          {
+            "Name": "James Karen",
+            "Id": "15ebc57a507472c3944ffffeacc39f75",
+            "Role": "College President / Elliot's Boss",
+            "Type": "Actor",
+            "PrimaryImageTag": "ba8822411798269d2e378bcedcb43536",
+            "ImageBlurHashes": {
+              "Primary": {
+                "ba8822411798269d2e378bcedcb43536": "dlJH]v%M00ay?bofRjt7IURjM{RjRjWBRjM{xuoft7of"
+              }
+            }
+          },
+          {
+            "Name": "Bill Pugin",
+            "Id": "2f7606419b9e0b53ed58c53cdc16f10d",
+            "Role": "William",
+            "Type": "Actor",
+            "PrimaryImageTag": "33d332a38acb182ad184f32758638bc4",
+            "ImageBlurHashes": {
+              "Primary": {
+                "33d332a38acb182ad184f32758638bc4": "dVG*1npI0}$f?t-or=JQxCJA$%xDMxNGXSxFIoRkxGbI"
+              }
+            }
+          },
+          {
+            "Name": "Lawrence T. Wrentz",
+            "Id": "294cc3dc215aefa0f2ebe88c4d6534fd",
+            "Role": "Prof. Arliss Wender",
+            "Type": "Actor",
+            "PrimaryImageTag": "e673a90115aaa3175f6a265fc478cce9",
+            "ImageBlurHashes": {
+              "Primary": {
+                "e673a90115aaa3175f6a265fc478cce9": "d38p_lNbB,^*4-kV~pxa%~%MIAE1S^M{?bxb?bxujEIU"
+              }
+            }
+          },
+          {
+            "Name": "Frank Marshall",
+            "Id": "2ab40cab73daf5426b07e75f671bffce",
+            "Role": "Director",
+            "Type": "Director",
+            "PrimaryImageTag": "f068e158fad02b6ca5524adaeb453889",
+            "ImageBlurHashes": {
+              "Primary": {
+                "f068e158fad02b6ca5524adaeb453889": "diGuXdxuXRR%~VoJtltRofofWBoJNet6RPj@ofj[jbj]"
+              }
+            }
+          },
+          {
+            "Name": "John Patrick Shanley",
+            "Id": "18b69f6ad103c5e29f59c0ea52efdf8b",
+            "Role": "Screenplay",
+            "Type": "Writer",
+            "PrimaryImageTag": "012c59db04dce5c9e07222d38667e4c9",
+            "ImageBlurHashes": {
+              "Primary": {
+                "012c59db04dce5c9e07222d38667e4c9": "dTJG.#xaK*%M~VjFxuozAGRjnOofx^kC%2t7bIWqaKt6"
+              }
+            }
+          },
+          {
+            "Name": "Sam Mercer",
+            "Id": "f228d769a6cf77c0a74cc473c2936b86",
+            "Role": "Producer",
+            "Type": "Producer",
+            "ImageBlurHashes": {
+              "Primary": {}
+            }
+          },
+          {
+            "Name": "Kathleen Kennedy",
+            "Id": "8634fe40ed730e584dde445a336e7e50",
+            "Role": "Producer",
+            "Type": "Producer",
+            "PrimaryImageTag": "061c87a8b9860e7670eb1a77181ad48a",
+            "ImageBlurHashes": {
+              "Primary": {
+                "061c87a8b9860e7670eb1a77181ad48a": "d*K^]Lxux^kD~qj[%Mt7ozV@M{f6t8j[WBoe%Moft6j["
+              }
+            }
+          }
+        ],
+        "Studios": [
+          {
+            "Name": "Paramount Pictures",
+            "Id": "2672ed34a3f2b0bb6b4257c2ab9875b7"
+          },
+          {
+            "Name": "The Kennedy/Marshall Company",
+            "Id": "37ec9ad1da501f3ac4142010b742ef08"
+          }
+        ],
+        "GenreItems": [
+          {
+            "Name": "Action",
+            "Id": "ce06903d834d2c3417e0889dd4049f3b"
+          },
+          {
+            "Name": "Adventure",
+            "Id": "51cec9645b896084d12b259acd05ccb1"
+          },
+          {
+            "Name": "Science Fiction",
+            "Id": "0430d514c35e1f158fa93f1eeb8361ea"
+          }
+        ],
+        "LocalTrailerCount": 0,
+        "UserData": {
+          "PlaybackPositionTicks": 0,
+          "PlayCount": 0,
+          "IsFavorite": false,
+          "Played": false,
+          "Key": "10329",
+          "ItemId": "0584b843810738ce65e860027ca07137"
+        },
+        "SpecialFeatureCount": 0,
+        "DisplayPreferencesId": "dbf7709c41faaa746463d67978eb863d",
+        "Tags": [
+          "based on novel or book",
+          "diamond",
+          "gorilla",
+          "congo",
+          "diamond mine",
+          "tribe",
+          "survival",
+          "ancient civilization",
+          "zoologist"
+        ],
+        "PrimaryImageAspectRatio": 0.6666666666666666,
+        "MediaStreams": [
+          {
+            "Codec": "h264",
+            "Language": "eng",
+            "ColorSpace": "bt709",
+            "ColorTransfer": "bt709",
+            "ColorPrimaries": "bt709",
+            "TimeBase": "1/1000",
+            "VideoRange": "SDR",
+            "VideoRangeType": "SDR",
+            "AudioSpatialFormat": "None",
+            "DisplayTitle": "1080p H264 SDR",
+            "NalLengthSize": "4",
+            "IsInterlaced": false,
+            "IsAVC": true,
+            "BitRate": 6389169,
+            "BitDepth": 8,
+            "RefFrames": 1,
+            "IsDefault": true,
+            "IsForced": false,
+            "IsHearingImpaired": false,
+            "Height": 1080,
+            "Width": 1920,
+            "AverageFrameRate": 23.976025,
+            "RealFrameRate": 23.976025,
+            "ReferenceFrameRate": 23.976025,
+            "Profile": "High",
+            "Type": "Video",
+            "AspectRatio": "16:9",
+            "Index": 0,
+            "IsExternal": false,
+            "IsTextSubtitleStream": false,
+            "SupportsExternalStream": false,
+            "PixelFormat": "yuv420p",
+            "Level": 40,
+            "IsAnamorphic": false
+          },
+          {
+            "Codec": "ac3",
+            "Language": "eng",
+            "TimeBase": "1/1000",
+            "Title": "Surround AC3 5.1",
+            "VideoRange": "Unknown",
+            "VideoRangeType": "Unknown",
+            "AudioSpatialFormat": "None",
+            "LocalizedDefault": "Default",
+            "LocalizedExternal": "External",
+            "DisplayTitle": "Surround AC3 5.1 - English - Dolby Digital - Default",
+            "IsInterlaced": false,
+            "IsAVC": false,
+            "ChannelLayout": "5.1",
+            "BitRate": 448000,
+            "Channels": 6,
+            "SampleRate": 48000,
+            "IsDefault": true,
+            "IsForced": false,
+            "IsHearingImpaired": false,
+            "Type": "Audio",
+            "Index": 1,
+            "IsExternal": false,
+            "IsTextSubtitleStream": false,
+            "SupportsExternalStream": false,
+            "Level": 0
+          },
+          {
+            "Codec": "ac3",
+            "Language": "eng",
+            "TimeBase": "1/1000",
+            "Title": "Commentary by author/screenwriter Kelly Goodner and film historian Jim Hemphill",
+            "VideoRange": "Unknown",
+            "VideoRangeType": "Unknown",
+            "AudioSpatialFormat": "None",
+            "LocalizedDefault": "Default",
+            "LocalizedExternal": "External",
+            "DisplayTitle": "Commentary by author/screenwriter Kelly Goodner and film historian Jim Hemphill - English - Dolby Digital - Stereo",
+            "IsInterlaced": false,
+            "IsAVC": false,
+            "ChannelLayout": "stereo",
+            "BitRate": 192000,
+            "Channels": 2,
+            "SampleRate": 48000,
+            "IsDefault": false,
+            "IsForced": false,
+            "IsHearingImpaired": false,
+            "Type": "Audio",
+            "Index": 2,
+            "IsExternal": false,
+            "IsTextSubtitleStream": false,
+            "SupportsExternalStream": false,
+            "Level": 0
+          },
+          {
+            "Codec": "subrip",
+            "Language": "eng",
+            "TimeBase": "1/1000",
+            "Title": "English SDH",
+            "VideoRange": "Unknown",
+            "VideoRangeType": "Unknown",
+            "AudioSpatialFormat": "None",
+            "LocalizedUndefined": "Undefined",
+            "LocalizedDefault": "Default",
+            "LocalizedForced": "Forced",
+            "LocalizedExternal": "External",
+            "LocalizedHearingImpaired": "Hearing Impaired",
+            "DisplayTitle": "English SDH - SUBRIP",
+            "IsInterlaced": false,
+            "IsAVC": false,
+            "IsDefault": false,
+            "IsForced": false,
+            "IsHearingImpaired": false,
+            "Height": 0,
+            "Width": 0,
+            "Type": "Subtitle",
+            "Index": 3,
+            "IsExternal": false,
+            "IsTextSubtitleStream": true,
+            "SupportsExternalStream": true,
+            "Level": 0
+          }
+        ],
+        "VideoType": "VideoFile",
+        "ImageTags": {
+          "Thumb": "783df870b92d9be06af04ecc7168b0fa",
+          "Logo": "c101779f19fb207dc822481a38fb665b",
+          "Primary": "0deb6ead4f4bac4a6e9c9b817d51e54e"
+        },
+        "BackdropImageTags": [
+          "8df533e7891433ba93af194f874ddd6b"
+        ],
+        "ImageBlurHashes": {
+          "Backdrop": {
+            "8df533e7891433ba93af194f874ddd6b": "WFBNM$oy04--VtD+-.t6NHxtsAIV9It6%KS4V@of_Ks:RRM|IV%1"
+          },
+          "Thumb": {
+            "783df870b92d9be06af04ecc7168b0fa": "WPF6I18^aQRRjE-:9~I@i_WEW?WAvx?GI[V]$$WAIot7R*W=kCV?"
+          },
+          "Logo": {
+            "c101779f19fb207dc822481a38fb665b": "HTNtsxj[R+oLs.xFxY$%j@~9oLazj[j@oLoeoejt"
+          },
+          "Primary": {
+            "0deb6ead4f4bac4a6e9c9b817d51e54e": "dPDR=~}$}+-V%1xVs+ogITxvj]WAs*$$xan~xujEoes:"
+          }
+        },
+        "Chapters": [
+          {
+            "StartPositionTicks": 0,
+            "Name": "The Big Find",
+            "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+          },
+          {
+            "StartPositionTicks": 6224550000,
+            "Name": "Hello Amy",
+            "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+          },
+          {
+            "StartPositionTicks": 10035440000,
+            "Name": "Jimmy's Flight",
+            "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+          },
+          {
+            "StartPositionTicks": 13904720000,
+            "Name": "Bad Day in Africa",
+            "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+          },
+          {
+            "StartPositionTicks": 18148960000,
+            "Name": "Sesame Cake",
+            "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+          },
+          {
+            "StartPositionTicks": 20339070000,
+            "Name": "Crossing the Border",
+            "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+          },
+          {
+            "StartPositionTicks": 25857500000,
+            "Name": "The Congo",
+            "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+          },
+          {
+            "StartPositionTicks": 29670890000,
+            "Name": "Levels of Dead",
+            "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+          },
+          {
+            "StartPositionTicks": 33174390000,
+            "Name": "Taming the River",
+            "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+          },
+          {
+            "StartPositionTicks": 37084550000,
+            "Name": "Fork in the Road",
+            "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+          },
+          {
+            "StartPositionTicks": 40316110000,
+            "Name": "The Lost City of Zinj",
+            "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+          },
+          {
+            "StartPositionTicks": 44472760000,
+            "Name": "We Are Watching You",
+            "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+          },
+          {
+            "StartPositionTicks": 48971420000,
+            "Name": "The Diamond Mines",
+            "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+          },
+          {
+            "StartPositionTicks": 53310760000,
+            "Name": "Endangered Species",
+            "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+          },
+          {
+            "StartPositionTicks": 56652010000,
+            "Name": "Home",
+            "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+          },
+          {
+            "StartPositionTicks": 60150920000,
+            "Name": "End Credits",
+            "ImageDateModified": "0001-01-01T00:00:00.0000000Z"
+          }
+        ],
+        "Trickplay": {},
+        "LocationType": "FileSystem",
+        "MediaType": "Video",
+        "LockedFields": [],
+        "LockData": false,
+        "Width": 1920,
+        "Height": 1080
+      }
+    }
+  }
+}

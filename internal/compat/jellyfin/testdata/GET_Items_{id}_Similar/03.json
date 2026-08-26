@@ -1,0 +1,42 @@
+{
+  "call_order": 194,
+  "request": {
+    "method": "GET",
+    "path": "/Items/0584b843-8107-38ce-65e8-60027ca07137/Similar",
+    "query": {
+      "userId": "89daa0a7-0eb8-4123-a6d9-19a751f383e8",
+      "limit": "25",
+      "fields": "PrimaryImageAspectRatio"
+    },
+    "headers": {
+      "Accept": "application/json, application/octet-stream;q=0.9, */*;q=0.8",
+      "Authorization": "REDACTED",
+      "User-Agent": "Wholphin/1.0.7-0-g2b9af1e8 via jellyfin-sdk-kotlin (OkHttp/4.12.0)",
+      "Host": "jellyfin-ref:8096",
+      "Connection": "Keep-Alive",
+      "Accept-Encoding": "gzip"
+    },
+    "body": {
+      "mimeType": "",
+      "text": ""
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8",
+      "Server": "Kestrel",
+      "Content-Encoding": "gzip",
+      "Transfer-Encoding": "chunked",
+      "Vary": "Accept-Encoding"
+    },
+    "body": {
+      "mimeType": "application/json; charset=utf-8",
+      "json": {
+        "Items": [],
+        "TotalRecordCount": 0,
+        "StartIndex": 0
+      }
+    }
+  }
+}

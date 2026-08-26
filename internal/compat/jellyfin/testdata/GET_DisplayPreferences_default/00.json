@@ -1,0 +1,57 @@
+{
+  "call_order": 11,
+  "request": {
+    "method": "GET",
+    "path": "/DisplayPreferences/default",
+    "query": {
+      "userId": "89daa0a7-0eb8-4123-a6d9-19a751f383e8",
+      "client": "Wholphin"
+    },
+    "headers": {
+      "Accept": "application/json, application/octet-stream;q=0.9, */*;q=0.8",
+      "Authorization": "REDACTED",
+      "User-Agent": "Wholphin/1.0.7-0-g2b9af1e8 via jellyfin-sdk-kotlin (OkHttp/4.12.0)",
+      "Host": "jellyfin-ref:8096",
+      "Connection": "Keep-Alive",
+      "Accept-Encoding": "gzip"
+    },
+    "body": {
+      "mimeType": "",
+      "text": ""
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8",
+      "Server": "Kestrel",
+      "Content-Encoding": "gzip",
+      "Transfer-Encoding": "chunked",
+      "Vary": "Accept-Encoding"
+    },
+    "body": {
+      "mimeType": "application/json; charset=utf-8",
+      "json": {
+        "Id": "8346cd6d-a81b-fe42-bb43-8da59c7608ba",
+        "SortBy": "SortName",
+        "RememberIndexing": false,
+        "PrimaryImageHeight": 250,
+        "PrimaryImageWidth": 250,
+        "CustomPrefs": {
+          "chromecastVersion": "stable",
+          "skipForwardLength": "30000",
+          "skipBackLength": "10000",
+          "enableNextVideoInfoOverlay": "False",
+          "tvhome": null,
+          "dashboardTheme": null
+        },
+        "ScrollDirection": "Horizontal",
+        "ShowBackdrop": true,
+        "RememberSorting": false,
+        "SortOrder": "Ascending",
+        "ShowSidebar": false,
+        "Client": "Wholphin"
+      }
+    }
+  }
+}

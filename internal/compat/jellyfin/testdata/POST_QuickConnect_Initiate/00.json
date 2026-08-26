@@ -1,0 +1,44 @@
+{
+  "call_order": 5,
+  "request": {
+    "method": "POST",
+    "path": "/QuickConnect/Initiate",
+    "query": {},
+    "headers": {
+      "Accept": "application/json, application/octet-stream;q=0.9, */*;q=0.8",
+      "Authorization": "REDACTED",
+      "User-Agent": "Wholphin/1.0.7-0-g2b9af1e8 via jellyfin-sdk-kotlin (OkHttp/4.12.0)",
+      "Content-Length": "0",
+      "Host": "jellyfin-ref:8096",
+      "Connection": "Keep-Alive",
+      "Accept-Encoding": "gzip"
+    },
+    "body": {
+      "mimeType": "",
+      "text": ""
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8",
+      "Server": "Kestrel",
+      "Content-Encoding": "gzip",
+      "Transfer-Encoding": "chunked",
+      "Vary": "Accept-Encoding"
+    },
+    "body": {
+      "mimeType": "application/json; charset=utf-8",
+      "json": {
+        "Authenticated": false,
+        "Secret": "80FD7DF41E1637EF31FC55BF1E49D021E176E0260314770DB53F2B2F97C61302",
+        "Code": "937621",
+        "DeviceId": "device-001",
+        "DeviceName": "SK1",
+        "AppName": "Wholphin",
+        "AppVersion": "1.0.7-0-g2b9af1e8",
+        "DateAdded": "2026-08-26T17:04:31.5975243Z"
+      }
+    }
+  }
+}

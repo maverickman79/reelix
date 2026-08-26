@@ -23,14 +23,6 @@ from urllib.parse import urlsplit, parse_qsl
 PLACEHOLDER = "REDACTED"
 
 # Headers dropped entirely, matched case-insensitively.
-# Proxy/CDN and server-timing headers: artifacts of the environment, not part
-# of the Jellyfin wire contract. Dropped so fixtures describe the protocol.
-DROP_HEADERS = {
-    "cf-ray", "cdn-loop", "cf-ipcountry", "cf-visitor", "cf-connecting-ip",
-    "x-forwarded-for", "x-forwarded-proto", "x-forwarded-scheme",
-    "x-forwarded-host", "x-real-ip", "x-response-time-ms", "date",
-}
-
 SENSITIVE_HEADERS = {
     "authorization",
     "x-emby-authorization",
@@ -117,8 +109,6 @@ def scrub_headers(headers: list[dict]) -> dict[str, str]:
     out = {}
     for header in headers:
         name = header.get("name", "")
-        if name.lower() in DROP_HEADERS:
-            continue
         if name.lower() in SENSITIVE_HEADERS:
             out[name] = PLACEHOLDER
         else:
@@ -157,21 +147,6 @@ def slugify(method: str, path: str) -> str:
     return f"{method.upper()}_{slug}"
 
 
-
-_JELLYFIN_PREFIXES = (
-    "/system", "/users", "/useritems", "/userviews", "/userimage",
-    "/items", "/videos", "/sessions", "/socket", "/quickconnect",
-    "/displaypreferences", "/livetv", "/shows", "/mediasegments",
-    "/artists", "/genres", "/persons", "/playlists", "/branding",
-    "/localization", "/plugins", "/library", "/audio",
-)
-
-
-def _is_jellyfin_route(path: str) -> bool:
-    low = path.lower()
-    return low == "/" or any(low.startswith(p) for p in _JELLYFIN_PREFIXES)
-
-
 def main() -> int:
     if len(sys.argv) != 3:
         print(__doc__)
@@ -203,17 +178,6 @@ def main() -> int:
         # Skip the media stream itself; the body is enormous and uninteresting.
         # The request line and headers are what matter for range behaviour.
         is_stream = "/videos/" in path.lower() and "stream" in path.lower()
-
-        # Skip vulnerability-scanner traffic: 8097 was briefly internet-facing
-        # and bots probed it. Anything Jellyfin does not serve is noise.
-        if response.get("status") in (404, 400) and not _is_jellyfin_route(path):
-            continue
-
-        # jellyfin-web assets: served to the setup wizard in a browser, never
-        # to Wholphin. Reelix ships no web client, so these are not fixtures.
-        low = path.lower()
-        if low.startswith("/web") or low in ("/", "/favicon.ico"):
-            continue
 
         slug = slugify(method, path)
         order += 1

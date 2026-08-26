@@ -1,0 +1,40 @@
+{
+  "call_order": 149,
+  "request": {
+    "method": "GET",
+    "path": "/Items/6763e17f-03d6-f385-1959-b6b784026495/Images/Logo",
+    "query": {
+      "quality": "96"
+    },
+    "headers": {
+      "if-modified-since": "Wed, 26 Aug 2026 15:47:43 GMT",
+      "Authorization": "REDACTED",
+      "Host": "jellyfin-ref:8096",
+      "Connection": "Keep-Alive",
+      "Accept-Encoding": "gzip",
+      "User-Agent": "okhttp/5.4.0"
+    },
+    "body": {
+      "mimeType": "",
+      "text": ""
+    }
+  },
+  "response": {
+    "status": 304,
+    "headers": {
+      "Content-Type": "image/png",
+      "Server": "Kestrel",
+      "Age": "4734",
+      "Cache-Control": "public",
+      "Last-Modified": "Wed, 26 Aug 2026 15:47:43 GMT",
+      "Vary": "Accept",
+      "transferMode.dlna.org": "Interactive",
+      "realTimeInfo.dlna.org": "DLNA.ORG_TLAG=*",
+      "Content-Disposition": "attachment"
+    },
+    "body": {
+      "mimeType": "image/png",
+      "text": ""
+    }
+  }
+}

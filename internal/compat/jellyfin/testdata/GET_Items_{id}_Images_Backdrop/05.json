@@ -1,0 +1,40 @@
+{
+  "call_order": 153,
+  "request": {
+    "method": "GET",
+    "path": "/Items/4cf31dfd-b423-e008-fdc4-509eb530d73a/Images/Backdrop",
+    "query": {
+      "quality": "96"
+    },
+    "headers": {
+      "if-modified-since": "Wed, 26 Aug 2026 15:47:42 GMT",
+      "Authorization": "REDACTED",
+      "Host": "jellyfin-ref:8096",
+      "Connection": "Keep-Alive",
+      "Accept-Encoding": "gzip",
+      "User-Agent": "okhttp/5.4.0"
+    },
+    "body": {
+      "mimeType": "",
+      "text": ""
+    }
+  },
+  "response": {
+    "status": 304,
+    "headers": {
+      "Content-Type": "image/jpeg",
+      "Server": "Kestrel",
+      "Age": "4742",
+      "Cache-Control": "public",
+      "Last-Modified": "Wed, 26 Aug 2026 15:47:42 GMT",
+      "Vary": "Accept",
+      "transferMode.dlna.org": "Interactive",
+      "realTimeInfo.dlna.org": "DLNA.ORG_TLAG=*",
+      "Content-Disposition": "attachment"
+    },
+    "body": {
+      "mimeType": "image/jpeg",
+      "text": ""
+    }
+  }
+}

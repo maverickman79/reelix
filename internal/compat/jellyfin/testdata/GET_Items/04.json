@@ -1,0 +1,223 @@
+{
+  "call_order": 38,
+  "request": {
+    "method": "GET",
+    "path": "/Items",
+    "query": {
+      "userId": "89daa0a7-0eb8-4123-a6d9-19a751f383e8",
+      "limit": "7",
+      "recursive": "true",
+      "sortOrder": "Descending",
+      "parentId": "f137a2dd-21bb-c1b9-9aa5-c0f6bf02a805",
+      "includeItemTypes": "Movie",
+      "sortBy": "DateCreated",
+      "isPlayed": "false",
+      "imageTypeLimit": "0",
+      "enableTotalRecordCount": "false",
+      "enableImages": "true"
+    },
+    "headers": {
+      "Accept": "application/json, application/octet-stream;q=0.9, */*;q=0.8",
+      "Authorization": "REDACTED",
+      "User-Agent": "Wholphin/1.0.7-0-g2b9af1e8 via jellyfin-sdk-kotlin (OkHttp/4.12.0)",
+      "Host": "jellyfin-ref:8096",
+      "Connection": "Keep-Alive",
+      "Accept-Encoding": "gzip"
+    },
+    "body": {
+      "mimeType": "",
+      "text": ""
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8",
+      "Server": "Kestrel",
+      "Content-Encoding": "gzip",
+      "Transfer-Encoding": "chunked",
+      "Vary": "Accept-Encoding"
+    },
+    "body": {
+      "mimeType": "application/json; charset=utf-8",
+      "json": {
+        "Items": [
+          {
+            "Name": "Idiocracy",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "6763e17f03d6f3851959b6b784026495",
+            "HasSubtitles": true,
+            "Container": "mkv",
+            "PremiereDate": "2006-09-01T00:00:00.0000000Z",
+            "CriticRating": 71,
+            "OfficialRating": "R",
+            "ChannelId": null,
+            "CommunityRating": 6.382,
+            "RunTimeTicks": 50503790000,
+            "ProductionYear": 2006,
+            "IsFolder": false,
+            "Type": "Movie",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 2,
+              "IsFavorite": false,
+              "LastPlayedDate": "2026-08-26T15:56:13.034016Z",
+              "Played": false,
+              "Key": "6763e17f-03d6-f385-1959-b6b784026495",
+              "ItemId": "6763e17f03d6f3851959b6b784026495"
+            },
+            "VideoType": "VideoFile",
+            "ImageTags": {},
+            "ImageBlurHashes": {},
+            "LocationType": "FileSystem",
+            "MediaType": "Video"
+          },
+          {
+            "Name": "Gangland",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "4cf31dfdb423e008fdc4509eb530d73a",
+            "HasSubtitles": true,
+            "Container": "mov,mp4,m4a,3gp,3g2,mj2",
+            "PremiereDate": "2025-08-14T00:00:00.0000000Z",
+            "ChannelId": null,
+            "CommunityRating": 7.045,
+            "RunTimeTicks": 62651520000,
+            "ProductionYear": 2025,
+            "IsFolder": false,
+            "Type": "Movie",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 1,
+              "IsFavorite": false,
+              "LastPlayedDate": "2026-08-26T15:58:15.7558218Z",
+              "Played": false,
+              "Key": "1147610",
+              "ItemId": "4cf31dfdb423e008fdc4509eb530d73a"
+            },
+            "VideoType": "VideoFile",
+            "ImageTags": {},
+            "ImageBlurHashes": {},
+            "LocationType": "FileSystem",
+            "MediaType": "Video"
+          },
+          {
+            "Name": "Congo",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "0584b843810738ce65e860027ca07137",
+            "HasSubtitles": true,
+            "Container": "mkv",
+            "PremiereDate": "1995-06-09T00:00:00.0000000Z",
+            "CriticRating": 24,
+            "OfficialRating": "PG-13",
+            "ChannelId": null,
+            "CommunityRating": 5.615,
+            "RunTimeTicks": 65095080000,
+            "ProductionYear": 1995,
+            "IsFolder": false,
+            "Type": "Movie",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "0584b843-8107-38ce-65e8-60027ca07137",
+              "ItemId": "0584b843810738ce65e860027ca07137"
+            },
+            "VideoType": "VideoFile",
+            "ImageTags": {},
+            "ImageBlurHashes": {},
+            "LocationType": "FileSystem",
+            "MediaType": "Video"
+          },
+          {
+            "Name": "Fight Club",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "4d98ccb85e3ccdc8616e7df681c1dae6",
+            "HasSubtitles": true,
+            "Container": "mkv",
+            "PremiereDate": "1999-10-15T00:00:00.0000000Z",
+            "CriticRating": 81,
+            "OfficialRating": "R",
+            "ChannelId": null,
+            "CommunityRating": 8.437,
+            "RunTimeTicks": 83485490000,
+            "ProductionYear": 1999,
+            "IsFolder": false,
+            "Type": "Movie",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 1,
+              "IsFavorite": false,
+              "LastPlayedDate": "2026-08-26T15:56:49.4120546Z",
+              "Played": false,
+              "Key": "4d98ccb8-5e3c-cdc8-616e-7df681c1dae6",
+              "ItemId": "4d98ccb85e3ccdc8616e7df681c1dae6"
+            },
+            "VideoType": "VideoFile",
+            "ImageTags": {},
+            "ImageBlurHashes": {},
+            "LocationType": "FileSystem",
+            "MediaType": "Video"
+          },
+          {
+            "Name": "Avatar Aang: The Last Airbender",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "e5b3272a9d990dc48e739de6fb45319e",
+            "Container": "mkv",
+            "PremiereDate": "2026-07-24T00:00:00.0000000Z",
+            "OfficialRating": "PG",
+            "ChannelId": null,
+            "CommunityRating": 9.199,
+            "RunTimeTicks": 59310500000,
+            "ProductionYear": 2026,
+            "IsFolder": false,
+            "Type": "Movie",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "e5b3272a-9d99-0dc4-8e73-9de6fb45319e",
+              "ItemId": "e5b3272a9d990dc48e739de6fb45319e"
+            },
+            "VideoType": "VideoFile",
+            "ImageTags": {},
+            "ImageBlurHashes": {},
+            "LocationType": "FileSystem",
+            "MediaType": "Video"
+          },
+          {
+            "Name": "The Singers",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "9688eefc2f75be8e5093d409a107adbd",
+            "HasSubtitles": true,
+            "Container": "mkv",
+            "PremiereDate": "2026-02-17T00:00:00.0000000Z",
+            "OfficialRating": "R",
+            "ChannelId": null,
+            "CommunityRating": 6.781,
+            "RunTimeTicks": 10812800000,
+            "ProductionYear": 2026,
+            "IsFolder": false,
+            "Type": "Movie",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "9688eefc-2f75-be8e-5093-d409a107adbd",
+              "ItemId": "9688eefc2f75be8e5093d409a107adbd"
+            },
+            "VideoType": "VideoFile",
+            "ImageTags": {},
+            "ImageBlurHashes": {},
+            "LocationType": "FileSystem",
+            "MediaType": "Video"
+          }
+        ],
+        "TotalRecordCount": 6,
+        "StartIndex": 0
+      }
+    }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "call_order": 156,
+  "request": {
+    "method": "GET",
+    "path": "/UserImage",
+    "query": {
+      "userId": "89daa0a7-0eb8-4123-a6d9-19a751f383e8"
+    },
+    "headers": {
+      "if-modified-since": "Wed, 26 Aug 2026 17:06:37 GMT",
+      "Authorization": "REDACTED",
+      "Host": "jellyfin-ref:8096",
+      "Connection": "Keep-Alive",
+      "Accept-Encoding": "gzip",
+      "User-Agent": "okhttp/5.4.0"
+    },
+    "body": {
+      "mimeType": "",
+      "text": ""
+    }
+  },
+  "response": {
+    "status": 404,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8",
+      "Server": "Kestrel",
+      "Content-Encoding": "gzip",
+      "Transfer-Encoding": "chunked",
+      "Vary": "Accept-Encoding"
+    },
+    "body": {
+      "mimeType": "application/json; charset=utf-8",
+      "json": {
+        "type": "https://tools.ietf.org/html/rfc9110#section-15.5.5",
+        "title": "Not Found",
+        "status": 404,
+        "traceId": "00-a3092ee2941989dd6376ff68eaca1110-744755381391b18e-00"
+      }
+    }
+  }
+}

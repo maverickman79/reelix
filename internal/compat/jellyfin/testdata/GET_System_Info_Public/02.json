@@ -1,0 +1,42 @@
+{
+  "call_order": 8,
+  "request": {
+    "method": "GET",
+    "path": "/System/Info/Public",
+    "query": {},
+    "headers": {
+      "Accept": "application/json, application/octet-stream;q=0.9, */*;q=0.8",
+      "Authorization": "REDACTED",
+      "User-Agent": "Wholphin/1.0.7-0-g2b9af1e8 via jellyfin-sdk-kotlin (OkHttp/4.12.0)",
+      "Host": "jellyfin-ref:8096",
+      "Connection": "Keep-Alive",
+      "Accept-Encoding": "gzip"
+    },
+    "body": {
+      "mimeType": "",
+      "text": ""
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8",
+      "Server": "Kestrel",
+      "Content-Encoding": "gzip",
+      "Transfer-Encoding": "chunked",
+      "Vary": "Accept-Encoding"
+    },
+    "body": {
+      "mimeType": "application/json; charset=utf-8",
+      "json": {
+        "LocalAddress": "http://172.19.0.2:8096",
+        "ServerName": "cc5a01d67795",
+        "Version": "10.11.8",
+        "ProductName": "Jellyfin Server",
+        "OperatingSystem": "",
+        "Id": "fee2a21a83bb4317b1ae2eb1e29d6322",
+        "StartupWizardCompleted": true
+      }
+    }
+  }
+}

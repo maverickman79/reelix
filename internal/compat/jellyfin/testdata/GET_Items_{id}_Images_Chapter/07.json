@@ -1,0 +1,37 @@
+{
+  "call_order": 161,
+  "request": {
+    "method": "GET",
+    "path": "/Items/0584b843-8107-38ce-65e8-60027ca07137/Images/Chapter",
+    "query": {
+      "quality": "96",
+      "fillHeight": "240",
+      "imageIndex": "3"
+    },
+    "headers": {
+      "Authorization": "REDACTED",
+      "Host": "jellyfin-ref:8096",
+      "Connection": "Keep-Alive",
+      "Accept-Encoding": "gzip",
+      "User-Agent": "okhttp/5.4.0"
+    },
+    "body": {
+      "mimeType": "",
+      "text": ""
+    }
+  },
+  "response": {
+    "status": 404,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8",
+      "Server": "Kestrel",
+      "Content-Encoding": "gzip",
+      "Transfer-Encoding": "chunked",
+      "Vary": "Accept-Encoding"
+    },
+    "body": {
+      "mimeType": "application/json; charset=utf-8",
+      "json": "Congo does not have an image of type Chapter"
+    }
+  }
+}

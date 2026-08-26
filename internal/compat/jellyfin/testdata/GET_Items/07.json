@@ -1,0 +1,481 @@
+{
+  "call_order": 48,
+  "request": {
+    "method": "GET",
+    "path": "/Items",
+    "query": {
+      "ids": "10d20c8a-bcc4-9635-28de-275b89938fcb",
+      "enableTotalRecordCount": "true",
+      "enableImages": "true"
+    },
+    "headers": {
+      "Accept": "application/json, application/octet-stream;q=0.9, */*;q=0.8",
+      "Authorization": "REDACTED",
+      "User-Agent": "Wholphin/1.0.7-0-g2b9af1e8 via jellyfin-sdk-kotlin (OkHttp/4.12.0)",
+      "Host": "jellyfin-ref:8096",
+      "Connection": "Keep-Alive",
+      "Accept-Encoding": "gzip"
+    },
+    "body": {
+      "mimeType": "",
+      "text": ""
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8",
+      "Server": "Kestrel",
+      "Content-Encoding": "gzip",
+      "Transfer-Encoding": "chunked",
+      "Vary": "Accept-Encoding"
+    },
+    "body": {
+      "mimeType": "application/json; charset=utf-8",
+      "json": {
+        "Items": [
+          {
+            "Name": "Luke Wilson",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "1df94ef50247447c7ee4794d53d51543",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Luke Wilson",
+              "ItemId": "1df94ef50247447c7ee4794d53d51543"
+            },
+            "ImageTags": {
+              "Primary": "50d414377ff461260f3d01b93f280253"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "50d414377ff461260f3d01b93f280253": "dYDS2dxa0fNGw]jZNwa}9[R*-Us:I:fk$*WBRjjZt6kC"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Maya Rudolph",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "45e6165110074d239774924d9fb6b833",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Maya Rudolph",
+              "ItemId": "45e6165110074d239774924d9fb6b833"
+            },
+            "ImageTags": {
+              "Primary": "c53a5d7ce4e50182a5e16dda46709dff"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "c53a5d7ce4e50182a5e16dda46709dff": "dhNIKi}@F{%guOXSS#x[?Io3-U%M%}t7t7xus;WCaJn$"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Dax Shepard",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "0b6149020c81453a810e851c125881b1",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Dax Shepard",
+              "ItemId": "0b6149020c81453a810e851c125881b1"
+            },
+            "ImageTags": {
+              "Primary": "a88654f870115ed8eb2467a6a7e565c6"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "a88654f870115ed8eb2467a6a7e565c6": "dUNJtO%Lys_3~Wt7_Nxu9^kCH?Ri_Nof%Mxv-=ay%Mxu"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Terry Crews",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "80b0b37428fe4fdf7d982f30d6f71dcd",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Terry Crews",
+              "ItemId": "80b0b37428fe4fdf7d982f30d6f71dcd"
+            },
+            "ImageTags": {
+              "Primary": "f1acb7fc568b05e18b513adbaf9eebac"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "f1acb7fc568b05e18b513adbaf9eebac": "deL47{%L.8-;8^oeWUWA-=azWBofxuWBsokBM_ozs:js"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Anthony 'Citric' Campos",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "633ffc156dc3c12336f4b7c5bfa41bae",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Anthony 'Citric' Campos",
+              "ItemId": "633ffc156dc3c12336f4b7c5bfa41bae"
+            },
+            "ImageTags": {
+              "Primary": "1a66d64cf0343ea5f25c3d9d6bb3fd7f"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "1a66d64cf0343ea5f25c3d9d6bb3fd7f": "dRCiXQs:0eW;^*of9tR*WXj[aeWBI;WVnij[Ipazt7oL"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "David Herman",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "bcdf128a9b9f09dfa05d32643618f45c",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-David Herman",
+              "ItemId": "bcdf128a9b9f09dfa05d32643618f45c"
+            },
+            "ImageTags": {
+              "Primary": "8c1fbd668937149e99e78230f966762b"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "8c1fbd668937149e99e78230f966762b": "dcG0Om%NTzt-ysbbpckrXTozV?aebvbbn4s9JCWVs.ay"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Sonny Castillo",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "a6c808107f3ed9cbaa16138e6b21ebc1",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Sonny Castillo",
+              "ItemId": "a6c808107f3ed9cbaa16138e6b21ebc1"
+            },
+            "ImageTags": {},
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {},
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Kevin McAfee",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "3336e5c0515dc25bf54209ba3115ca02",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Kevin McAfee",
+              "ItemId": "3336e5c0515dc25bf54209ba3115ca02"
+            },
+            "ImageTags": {},
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {},
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Robert Musgrave",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "7851ab9de4433f5616f21280834ad890",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Robert Musgrave",
+              "ItemId": "7851ab9de4433f5616f21280834ad890"
+            },
+            "ImageTags": {
+              "Primary": "166340ddfb6cfb3b324cd585c0602e00"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "166340ddfb6cfb3b324cd585c0602e00": "dPHV9way9F%M~q?b?bt7%M%M_3t7_3WBt7xu-;ofxuWB"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Michael McCafferty",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "beb060ecc647e5116d5dd3d2757a0d91",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Michael McCafferty",
+              "ItemId": "beb060ecc647e5116d5dd3d2757a0d91"
+            },
+            "ImageTags": {
+              "Primary": "bb9e89e8823bb48641a52ab3f04a1c89"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "bb9e89e8823bb48641a52ab3f04a1c89": "deDu_8xH0fIo--jFNIbIM_R*xut7NebIs9e.R*a|s:fk"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Christopher Ryan",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "f8562c1601c17daf1322d1b8ecc53aca",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Christopher Ryan",
+              "ItemId": "f8562c1601c17daf1322d1b8ecc53aca"
+            },
+            "ImageTags": {},
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {},
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Justin Long",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "089399ec2965e8d0d3c4e8688c6a4f2c",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Justin Long",
+              "ItemId": "089399ec2965e8d0d3c4e8688c6a4f2c"
+            },
+            "ImageTags": {
+              "Primary": "b3b3521464389aef6b74e18390b453f0"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "b3b3521464389aef6b74e18390b453f0": "dQIgu~=|JW-p~Vi_ofWB5nNG%2NH%fs;xu%2WYs.xakC"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Heath Jones",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "f198974cedd201d1968866650dfcd261",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Heath Jones",
+              "ItemId": "f198974cedd201d1968866650dfcd261"
+            },
+            "ImageTags": {},
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {},
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Eli Mu\u00f1oz",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "1c17edeb4d3a6020ca1f000c56365a5a",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Eli Munoz",
+              "ItemId": "1c17edeb4d3a6020ca1f000c56365a5a"
+            },
+            "ImageTags": {},
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {},
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Patrick Fischler",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "9032e8f2eeb7100ff078a47a472107fb",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Patrick Fischler",
+              "ItemId": "9032e8f2eeb7100ff078a47a472107fb"
+            },
+            "ImageTags": {
+              "Primary": "b4ffa4747e029279a48bcf12d32b65d9"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "b4ffa4747e029279a48bcf12d32b65d9": "dMN0eyxGK#%g}$jF%LRPYR-pMxtR_LxZNHW;xUx]s,oL"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Mike Judge",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "30b5dec4bb363b6240db81701d038518",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Mike Judge",
+              "ItemId": "30b5dec4bb363b6240db81701d038518"
+            },
+            "ImageTags": {
+              "Primary": "e9eb64eb491d1b24ae357bbd75c26ffa"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "e9eb64eb491d1b24ae357bbd75c26ffa": "dUC$4fxa0zR+}[s:9uNaWXoLn%R+IpWCs:oLWBWBbHoL"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Etan Cohen",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "a596ad86d8cbe6a148f5a57e017981fd",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Etan Cohen",
+              "ItemId": "a596ad86d8cbe6a148f5a57e017981fd"
+            },
+            "ImageTags": {
+              "Primary": "ef2e2535b6a3c64cccc39c91777e4ad9"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "ef2e2535b6a3c64cccc39c91777e4ad9": "dFIN?dzn1QT0IWDi-pD%O@V@soyEWsRP?axuNKRPxZo}"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Elysa Koplovitz Dutton",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "10d20c8abcc4963528de275b89938fcb",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Elysa Koplovitz Dutton",
+              "ItemId": "10d20c8abcc4963528de275b89938fcb"
+            },
+            "ImageTags": {
+              "Primary": "2e22ce9aa4cb8e131e02de6fd871fcfa"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "2e22ce9aa4cb8e131e02de6fd871fcfa": "dMDlWht7KQxu~WoftR%29ut7%1xaR,xas:WXxujsxaR+"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          }
+        ],
+        "TotalRecordCount": 18,
+        "StartIndex": 0
+      }
+    }
+  }
+}

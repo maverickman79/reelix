@@ -1,0 +1,36 @@
+{
+  "call_order": 123,
+  "request": {
+    "method": "GET",
+    "path": "/socket",
+    "query": {},
+    "headers": {
+      "Authorization": "REDACTED",
+      "User-Agent": "Wholphin/1.0.7-0-g2b9af1e8 via jellyfin-sdk-kotlin (OkHttp/4.12.0)",
+      "Upgrade": "websocket",
+      "Connection": "Upgrade",
+      "Sec-WebSocket-Key": "oxAlS+8MmMXA2phvBF6tMw==",
+      "Sec-WebSocket-Version": "13",
+      "Sec-WebSocket-Extensions": "permessage-deflate",
+      "Host": "jellyfin-ref:8096",
+      "Accept-Encoding": "gzip"
+    },
+    "body": {
+      "mimeType": "",
+      "text": ""
+    }
+  },
+  "response": {
+    "status": 101,
+    "headers": {
+      "Connection": "Upgrade",
+      "Server": "Kestrel",
+      "Upgrade": "websocket",
+      "Sec-WebSocket-Accept": "VY8IeHut9ow0A/J+K8JQ958Q1e0="
+    },
+    "body": {
+      "mimeType": "",
+      "text": ""
+    }
+  }
+}

@@ -61,7 +61,7 @@ services:
       REELIX_DB_PASSWORD: ${REELIX_DB_PASSWORD:?REELIX_DB_PASSWORD must be set in .env}
       REELIX_DB_SSLMODE: ${REELIX_DB_SSLMODE:-disable}
     ports:
-      - "${REELIX_HTTP_PORT:-8080}:8080"
+      - "100.95.0.122:${REELIX_HTTP_PORT:-8080}:8080"
     volumes:
       - config:/config
       - cache:/cache

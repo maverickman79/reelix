@@ -1,0 +1,36 @@
+{
+  "call_order": 9,
+  "request": {
+    "method": "POST",
+    "path": "/Sessions/Capabilities",
+    "query": {
+      "playableMediaTypes": "Video",
+      "supportedCommands": "SendString",
+      "supportsMediaControl": "true",
+      "supportsPersistentIdentifier": "true"
+    },
+    "headers": {
+      "Accept": "application/json, application/octet-stream;q=0.9, */*;q=0.8",
+      "Authorization": "REDACTED",
+      "User-Agent": "Wholphin/1.0.7-0-g2b9af1e8 via jellyfin-sdk-kotlin (OkHttp/4.12.0)",
+      "Content-Length": "0",
+      "Host": "jellyfin-ref:8096",
+      "Connection": "Keep-Alive",
+      "Accept-Encoding": "gzip"
+    },
+    "body": {
+      "mimeType": "",
+      "text": ""
+    }
+  },
+  "response": {
+    "status": 204,
+    "headers": {
+      "Server": "Kestrel"
+    },
+    "body": {
+      "mimeType": "",
+      "text": ""
+    }
+  }
+}

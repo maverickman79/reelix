@@ -1,0 +1,531 @@
+{
+  "call_order": 163,
+  "request": {
+    "method": "GET",
+    "path": "/Items",
+    "query": {
+      "ids": "8634fe40-ed73-0e58-4dde-445a336e7e50",
+      "enableTotalRecordCount": "true",
+      "enableImages": "true"
+    },
+    "headers": {
+      "Accept": "application/json, application/octet-stream;q=0.9, */*;q=0.8",
+      "Authorization": "REDACTED",
+      "User-Agent": "Wholphin/1.0.7-0-g2b9af1e8 via jellyfin-sdk-kotlin (OkHttp/4.12.0)",
+      "Host": "jellyfin-ref:8096",
+      "Connection": "Keep-Alive",
+      "Accept-Encoding": "gzip"
+    },
+    "body": {
+      "mimeType": "",
+      "text": ""
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8",
+      "Server": "Kestrel",
+      "Content-Encoding": "gzip",
+      "Transfer-Encoding": "chunked",
+      "Vary": "Accept-Encoding"
+    },
+    "body": {
+      "mimeType": "application/json; charset=utf-8",
+      "json": {
+        "Items": [
+          {
+            "Name": "Laura Linney",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "f95a784e81af19eb566b28666314c419",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Laura Linney",
+              "ItemId": "f95a784e81af19eb566b28666314c419"
+            },
+            "ImageTags": {
+              "Primary": "a5bf938afa7ad844cfb4d839e2f66ec8"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "a5bf938afa7ad844cfb4d839e2f66ec8": "dUL30_+]0L-V9sxuI;kB-pw^r?WBxVt6ofn$NHj]ozt6"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Dylan Walsh",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "f8fab3d3b087a68d19a9c5f1bb7cb82b",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Dylan Walsh",
+              "ItemId": "f8fab3d3b087a68d19a9c5f1bb7cb82b"
+            },
+            "ImageTags": {
+              "Primary": "cd8daec19929a0b68e969c86f4aefdb6"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "cd8daec19929a0b68e969c86f4aefdb6": "dVDIa$s.0eNGR4s:o#bIE+Rj$$ofNckCoIaeM{WBxbof"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Ernie Hudson",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "e66f6aafac87f911b5cc606d6825823d",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Ernie Hudson",
+              "ItemId": "e66f6aafac87f911b5cc606d6825823d"
+            },
+            "ImageTags": {
+              "Primary": "148247dcc040c997eb8b0bf24a9b2284"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "148247dcc040c997eb8b0bf24a9b2284": "dGA,Rg~p%$?c?H%MtRxv56D%ROMx9aIURPM{ofofs:of"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Tim Curry",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "9bb479ad68de565257117f6df776af56",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Tim Curry",
+              "ItemId": "9bb479ad68de565257117f6df776af56"
+            },
+            "ImageTags": {
+              "Primary": "be696d3a6394ce3d40a80e2aad535490"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "be696d3a6394ce3d40a80e2aad535490": "dYDSE?xa0KM{R4n$x]ozS#WBi_s:NdkCxZV@E0WB%Mt6"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Grant Heslov",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "77f8f8f77b78a6b057cd906d588b83ec",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Grant Heslov",
+              "ItemId": "77f8f8f77b78a6b057cd906d588b83ec"
+            },
+            "ImageTags": {
+              "Primary": "ffc11221a753202710717c8950ec99b9"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "ffc11221a753202710717c8950ec99b9": "dgI=46%3Pqtn%#ogx]o#5Sawi_WBu6fitStRTJR+$$t7"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Joe Don Baker",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "e3d014fa06662ec4775facaba1ec6639",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Joe Don Baker",
+              "ItemId": "e3d014fa06662ec4775facaba1ec6639"
+            },
+            "ImageTags": {
+              "Primary": "edf6d61b01ea423fe28a5faa70bdd975"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "edf6d61b01ea423fe28a5faa70bdd975": "dVJRdVayof-;~qM{-;WB4nD%%MWBayIUWBxu-;WBIUWB"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Misty Rosas",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "b46443c38da2805c0c07583d57527713",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Misty Rosas",
+              "ItemId": "b46443c38da2805c0c07583d57527713"
+            },
+            "ImageTags": {
+              "Primary": "368e8efdb09f87268586741613956db8"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "368e8efdb09f87268586741613956db8": "dsJQl{RPEM%101tRRjM|t,n$-Vf+D%RjxaxZozo#NGR+"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Mary Ellen Trainor",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "9e38fc3822226def4cc391f12192d044",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Mary Ellen Trainor",
+              "ItemId": "9e38fc3822226def4cc391f12192d044"
+            },
+            "ImageTags": {
+              "Primary": "efe15f8828888624ee6d34e2c25e3a81"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "efe15f8828888624ee6d34e2c25e3a81": "dZFqt7%10gNHxts:RjR*57R*%1oLV@WBoffkIpWCt6oe"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Stuart Pankin",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "00dd687f900f998f22e20b112aa41912",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Stuart Pankin",
+              "ItemId": "00dd687f900f998f22e20b112aa41912"
+            },
+            "ImageTags": {
+              "Primary": "5566df1843cce08ef888269582d41cc6"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "5566df1843cce08ef888269582d41cc6": "dWD+9|%20fI:#*RiJAkDNGs:$*RjJ.f+w]jZE1Rjxas;"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Carolyn Seymour",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "638195f09e68e43b9cc253bdca43e3f3",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Carolyn Seymour",
+              "ItemId": "638195f09e68e43b9cc253bdca43e3f3"
+            },
+            "ImageTags": {
+              "Primary": "aa9d0cd7db93af1f00aeefa80f7ed251"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "aa9d0cd7db93af1f00aeefa80f7ed251": "dSHxys~q?b~qxu-;%M-:?aRjt7of%MM{WBxu-;xuRjWV"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Romy Rosemont",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "a8047c55010575966d1f9930c8467110",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Romy Rosemont",
+              "ItemId": "a8047c55010575966d1f9930c8467110"
+            },
+            "ImageTags": {
+              "Primary": "fca17c8dd83eb04d209386fae60208c5"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "fca17c8dd83eb04d209386fae60208c5": "dqIgfZf50ft7M{xZxZRkIpR+xaoMNHfkj[WBWYfRaeR*"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Lorene Noh",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "5fb9d7f836afeb7c8569a87de616055f",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Lorene Noh",
+              "ItemId": "5fb9d7f836afeb7c8569a87de616055f"
+            },
+            "ImageTags": {
+              "Primary": "5c75544bc297b5ca622875fb190dc824"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "5c75544bc297b5ca622875fb190dc824": "dLB:plxD0KX9-Tt8NbITENjY%1NHInRkxu%L9ZWV-pxt"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "James Karen",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "15ebc57a507472c3944ffffeacc39f75",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-James Karen",
+              "ItemId": "15ebc57a507472c3944ffffeacc39f75"
+            },
+            "ImageTags": {
+              "Primary": "ba8822411798269d2e378bcedcb43536"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "ba8822411798269d2e378bcedcb43536": "dlJH]v%M00ay?bofRjt7IURjM{RjRjWBRjM{xuoft7of"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Bill Pugin",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "2f7606419b9e0b53ed58c53cdc16f10d",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Bill Pugin",
+              "ItemId": "2f7606419b9e0b53ed58c53cdc16f10d"
+            },
+            "ImageTags": {
+              "Primary": "33d332a38acb182ad184f32758638bc4"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "33d332a38acb182ad184f32758638bc4": "dVG*1npI0}$f?t-or=JQxCJA$%xDMxNGXSxFIoRkxGbI"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Lawrence T. Wrentz",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "294cc3dc215aefa0f2ebe88c4d6534fd",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Lawrence T. Wrentz",
+              "ItemId": "294cc3dc215aefa0f2ebe88c4d6534fd"
+            },
+            "ImageTags": {
+              "Primary": "e673a90115aaa3175f6a265fc478cce9"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "e673a90115aaa3175f6a265fc478cce9": "d38p_lNbB,^*4-kV~pxa%~%MIAE1S^M{?bxb?bxujEIU"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Frank Marshall",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "2ab40cab73daf5426b07e75f671bffce",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Frank Marshall",
+              "ItemId": "2ab40cab73daf5426b07e75f671bffce"
+            },
+            "ImageTags": {
+              "Primary": "f068e158fad02b6ca5524adaeb453889"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "f068e158fad02b6ca5524adaeb453889": "diGuXdxuXRR%~VoJtltRofofWBoJNet6RPj@ofj[jbj]"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "John Patrick Shanley",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "18b69f6ad103c5e29f59c0ea52efdf8b",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-John Patrick Shanley",
+              "ItemId": "18b69f6ad103c5e29f59c0ea52efdf8b"
+            },
+            "ImageTags": {
+              "Primary": "012c59db04dce5c9e07222d38667e4c9"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "012c59db04dce5c9e07222d38667e4c9": "dTJG.#xaK*%M~VjFxuozAGRjnOofx^kC%2t7bIWqaKt6"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Sam Mercer",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "f228d769a6cf77c0a74cc473c2936b86",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Sam Mercer",
+              "ItemId": "f228d769a6cf77c0a74cc473c2936b86"
+            },
+            "ImageTags": {},
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {},
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          },
+          {
+            "Name": "Kathleen Kennedy",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "8634fe40ed730e584dde445a336e7e50",
+            "ChannelId": null,
+            "Type": "Person",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "Person-Kathleen Kennedy",
+              "ItemId": "8634fe40ed730e584dde445a336e7e50"
+            },
+            "ImageTags": {
+              "Primary": "061c87a8b9860e7670eb1a77181ad48a"
+            },
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {
+              "Primary": {
+                "061c87a8b9860e7670eb1a77181ad48a": "d*K^]Lxux^kD~qj[%Mt7ozV@M{f6t8j[WBoe%Moft6j["
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown"
+          }
+        ],
+        "TotalRecordCount": 19,
+        "StartIndex": 0
+      }
+    }
+  }
+}

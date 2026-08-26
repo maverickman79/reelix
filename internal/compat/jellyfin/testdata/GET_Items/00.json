@@ -1,0 +1,349 @@
+{
+  "call_order": 33,
+  "request": {
+    "method": "GET",
+    "path": "/Items",
+    "query": {
+      "startIndex": "0",
+      "limit": "25",
+      "recursive": "true",
+      "sortOrder": "Descending",
+      "parentId": "f137a2dd-21bb-c1b9-9aa5-c0f6bf02a805",
+      "fields": "CanDelete",
+      "includeItemTypes": "Movie",
+      "sortBy": "DateCreated",
+      "enableUserData": "true",
+      "enableTotalRecordCount": "false",
+      "enableImages": "true"
+    },
+    "headers": {
+      "Accept": "application/json, application/octet-stream;q=0.9, */*;q=0.8",
+      "Authorization": "REDACTED",
+      "User-Agent": "Wholphin/1.0.7-0-g2b9af1e8 via jellyfin-sdk-kotlin (OkHttp/4.12.0)",
+      "Host": "jellyfin-ref:8096",
+      "Connection": "Keep-Alive",
+      "Accept-Encoding": "gzip"
+    },
+    "body": {
+      "mimeType": "",
+      "text": ""
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8",
+      "Server": "Kestrel",
+      "Content-Encoding": "gzip",
+      "Transfer-Encoding": "chunked",
+      "Vary": "Accept-Encoding"
+    },
+    "body": {
+      "mimeType": "application/json; charset=utf-8",
+      "json": {
+        "Items": [
+          {
+            "Name": "Idiocracy",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "6763e17f03d6f3851959b6b784026495",
+            "CanDelete": true,
+            "HasSubtitles": true,
+            "Container": "mkv",
+            "SortName": "idiocracy",
+            "PremiereDate": "2006-09-01T00:00:00.0000000Z",
+            "CriticRating": 71,
+            "OfficialRating": "R",
+            "ChannelId": null,
+            "Overview": "To test its top-secret Human Hibernation Project, the Pentagon picks the most average European-Americans it can find - an Army private and a prostitute - and sends them to the year 2505 after a series of freak events. But when they arrive, they find a civilization so dumbed-down that they're the smartest people around.",
+            "CommunityRating": 6.382,
+            "RunTimeTicks": 50503790000,
+            "ProductionYear": 2006,
+            "IsFolder": false,
+            "Type": "Movie",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 2,
+              "IsFavorite": false,
+              "LastPlayedDate": "2026-08-26T15:56:13.034016Z",
+              "Played": false,
+              "Key": "6763e17f-03d6-f385-1959-b6b784026495",
+              "ItemId": "6763e17f03d6f3851959b6b784026495"
+            },
+            "VideoType": "VideoFile",
+            "ImageTags": {
+              "Thumb": "bf486a53a131a499e3f1cf1cd49b7565",
+              "Primary": "8c613f9d6aba27e4574b661a7dacc098",
+              "Logo": "b160984774872569bba1e49aedaaf7df"
+            },
+            "BackdropImageTags": [
+              "fc5a445cd04ef1e2b4852e1e19c90031"
+            ],
+            "ImageBlurHashes": {
+              "Backdrop": {
+                "fc5a445cd04ef1e2b4852e1e19c90031": "WbQuet~0$_R=-g~R-joeocs,WX$}M{WGs.s+R.${${bHa$s+s.-i"
+              },
+              "Thumb": {
+                "bf486a53a131a499e3f1cf1cd49b7565": "WdOfIX-l~J%JIvs*Int5s=IWjZRp0ToLs:IYt1ob-nocs*RoWYob"
+              },
+              "Primary": {
+                "8c613f9d6aba27e4574b661a7dacc098": "dYO37=-m~L^zkoNIWVWoMyM~IcNI4?RlWFIrRSoJWCIr"
+              },
+              "Logo": {
+                "b160984774872569bba1e49aedaaf7df": "OyPY0itRX8soRjt7Rj-pbva|kCjZaejZHXWBbbjtozWBfQ"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Video"
+          },
+          {
+            "Name": "Gangland",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "4cf31dfdb423e008fdc4509eb530d73a",
+            "CanDelete": true,
+            "HasSubtitles": true,
+            "Container": "mov,mp4,m4a,3gp,3g2,mj2",
+            "SortName": "gangland",
+            "PremiereDate": "2025-08-14T00:00:00.0000000Z",
+            "ChannelId": null,
+            "Overview": "A weathered tribal cop and his new trainee must find a ruthless fugitive, whose return to their rural Indigenous reservation has exposed its darkest secrets and could ignite a violent gang war.",
+            "CommunityRating": 7.045,
+            "RunTimeTicks": 62651520000,
+            "ProductionYear": 2025,
+            "IsFolder": false,
+            "Type": "Movie",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 1,
+              "IsFavorite": false,
+              "LastPlayedDate": "2026-08-26T15:58:15.7558218Z",
+              "Played": false,
+              "Key": "1147610",
+              "ItemId": "4cf31dfdb423e008fdc4509eb530d73a"
+            },
+            "VideoType": "VideoFile",
+            "ImageTags": {
+              "Primary": "c4b1369d5787061c0dd394fc8e21851d"
+            },
+            "BackdropImageTags": [
+              "424fdee2c54ce27f4bdab7b51020e891"
+            ],
+            "ImageBlurHashes": {
+              "Backdrop": {
+                "424fdee2c54ce27f4bdab7b51020e891": "W16R7LxbS4?bInV?.8x]xtoLjERj00?abHM{NGNG?bt7t7IoxYxa"
+              },
+              "Primary": {
+                "c4b1369d5787061c0dd394fc8e21851d": "duKUG=?b%g%1~qt6oyofxaM{M{R+%MofjFkCtRo0Rjj?"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Video"
+          },
+          {
+            "Name": "Congo",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "0584b843810738ce65e860027ca07137",
+            "CanDelete": true,
+            "HasSubtitles": true,
+            "Container": "mkv",
+            "SortName": "congo",
+            "PremiereDate": "1995-06-09T00:00:00.0000000Z",
+            "CriticRating": 24,
+            "OfficialRating": "PG-13",
+            "ChannelId": null,
+            "Overview": "Eight people embark on an expedition into the Congo, a mysterious expanse of unexplored Africa, where human greed and the laws of nature have gone berserk.",
+            "CommunityRating": 5.615,
+            "RunTimeTicks": 65095080000,
+            "ProductionYear": 1995,
+            "IsFolder": false,
+            "Type": "Movie",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "0584b843-8107-38ce-65e8-60027ca07137",
+              "ItemId": "0584b843810738ce65e860027ca07137"
+            },
+            "VideoType": "VideoFile",
+            "ImageTags": {
+              "Thumb": "783df870b92d9be06af04ecc7168b0fa",
+              "Logo": "c101779f19fb207dc822481a38fb665b",
+              "Primary": "0deb6ead4f4bac4a6e9c9b817d51e54e"
+            },
+            "BackdropImageTags": [
+              "8df533e7891433ba93af194f874ddd6b"
+            ],
+            "ImageBlurHashes": {
+              "Backdrop": {
+                "8df533e7891433ba93af194f874ddd6b": "WFBNM$oy04--VtD+-.t6NHxtsAIV9It6%KS4V@of_Ks:RRM|IV%1"
+              },
+              "Thumb": {
+                "783df870b92d9be06af04ecc7168b0fa": "WPF6I18^aQRRjE-:9~I@i_WEW?WAvx?GI[V]$$WAIot7R*W=kCV?"
+              },
+              "Logo": {
+                "c101779f19fb207dc822481a38fb665b": "HTNtsxj[R+oLs.xFxY$%j@~9oLazj[j@oLoeoejt"
+              },
+              "Primary": {
+                "0deb6ead4f4bac4a6e9c9b817d51e54e": "dPDR=~}$}+-V%1xVs+ogITxvj]WAs*$$xan~xujEoes:"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Video"
+          },
+          {
+            "Name": "Fight Club",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "4d98ccb85e3ccdc8616e7df681c1dae6",
+            "CanDelete": true,
+            "HasSubtitles": true,
+            "Container": "mkv",
+            "SortName": "fight club",
+            "PremiereDate": "1999-10-15T00:00:00.0000000Z",
+            "CriticRating": 81,
+            "OfficialRating": "R",
+            "ChannelId": null,
+            "Overview": "A ticking-time-bomb insomniac and a slippery soap salesman channel primal male aggression into a shocking new form of therapy. Their concept catches on, with underground \"fight clubs\" forming in every town, until an eccentric gets in the way and ignites an out-of-control spiral toward oblivion.",
+            "CommunityRating": 8.437,
+            "RunTimeTicks": 83485490000,
+            "ProductionYear": 1999,
+            "IsFolder": false,
+            "Type": "Movie",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 1,
+              "IsFavorite": false,
+              "LastPlayedDate": "2026-08-26T15:56:49.4120546Z",
+              "Played": false,
+              "Key": "4d98ccb8-5e3c-cdc8-616e-7df681c1dae6",
+              "ItemId": "4d98ccb85e3ccdc8616e7df681c1dae6"
+            },
+            "VideoType": "VideoFile",
+            "ImageTags": {
+              "Thumb": "df94ce6173a48af94baeaee27310c834",
+              "Logo": "41fdc1227dd30c6ff181b17ed54c8916",
+              "Primary": "6041165eca7db2e412588f2739b7ecfe"
+            },
+            "BackdropImageTags": [
+              "f08acad5ccc673737bcd63ce89f2d851"
+            ],
+            "ImageBlurHashes": {
+              "Backdrop": {
+                "f08acad5ccc673737bcd63ce89f2d851": "W330HNEM.SJ:-.NFT1oLXmo#W=o}8w-pDN$$IUxv$*MxxtM_xuRk"
+              },
+              "Thumb": {
+                "df94ce6173a48af94baeaee27310c834": "WPJtMMs;7VSz,I-;%gtRM{w|xbg30_%MviNF%gsCspxHR*OT%f%2"
+              },
+              "Logo": {
+                "41fdc1227dd30c6ff181b17ed54c8916": "HUNC^R6K1?FF6KWoJi$7N?a}SKWnJisVN?$8wzwz"
+              },
+              "Primary": {
+                "6041165eca7db2e412588f2739b7ecfe": "dQKAmN?H1YpH~W%MNGj[C1XSvOrs%fofR6WV}ui{X,tR"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Video"
+          },
+          {
+            "Name": "Avatar Aang: The Last Airbender",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "e5b3272a9d990dc48e739de6fb45319e",
+            "CanDelete": true,
+            "Container": "mkv",
+            "SortName": "avatar aang: last airbender",
+            "PremiereDate": "2026-07-24T00:00:00.0000000Z",
+            "OfficialRating": "PG",
+            "ChannelId": null,
+            "Overview": "Avatar Aang, the world's last Airbender, learns of an ancient power that could save his culture from extinction. With the help of his friends, he embarks on a global quest to find it before it falls into the wrong hands and threatens to upend the peace they sacrificed everything to achieve.",
+            "CommunityRating": 9.199,
+            "RunTimeTicks": 59310500000,
+            "ProductionYear": 2026,
+            "IsFolder": false,
+            "Type": "Movie",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "e5b3272a-9d99-0dc4-8e73-9de6fb45319e",
+              "ItemId": "e5b3272a9d990dc48e739de6fb45319e"
+            },
+            "VideoType": "VideoFile",
+            "ImageTags": {
+              "Logo": "9b1bd1ef336c75626261530d34b2681f",
+              "Primary": "132df0dc46f76e8babac687ab88bc99e",
+              "Thumb": "3d5ea8db44429f7364128fe6242255e4"
+            },
+            "BackdropImageTags": [
+              "16dc46f933a5b5c651261984e5e7607f"
+            ],
+            "ImageBlurHashes": {
+              "Backdrop": {
+                "16dc46f933a5b5c651261984e5e7607f": "WSCGiQxt01Vs$gRnxbj[M{V@xutlV[NeM|i_%Ltk-;bcIonOaLSh"
+              },
+              "Logo": {
+                "9b1bd1ef336c75626261530d34b2681f": "OJF;DR$~0kV]9xo2ja?At5EONININbR+1JNbxYbae=WCR+"
+              },
+              "Primary": {
+                "132df0dc46f76e8babac687ab88bc99e": "dNB:]X%M0LNH?vt6I9R%xbjZMxRjaJW=IVMyJBSininO"
+              },
+              "Thumb": {
+                "3d5ea8db44429f7364128fe6242255e4": "NKBEBnMI4T?bWCKP?vn3Md%#WXIURkWBkCoyV@RP"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Video"
+          },
+          {
+            "Name": "The Singers",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "9688eefc2f75be8e5093d409a107adbd",
+            "CanDelete": true,
+            "HasSubtitles": true,
+            "Container": "mkv",
+            "SortName": "singers",
+            "PremiereDate": "2026-02-17T00:00:00.0000000Z",
+            "OfficialRating": "R",
+            "ChannelId": null,
+            "Overview": "An impromptu singing contest at a dive bar turns a lonely night into a soul-baring moment of shared harmony.",
+            "CommunityRating": 6.781,
+            "RunTimeTicks": 10812800000,
+            "ProductionYear": 2026,
+            "IsFolder": false,
+            "Type": "Movie",
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "9688eefc-2f75-be8e-5093-d409a107adbd",
+              "ItemId": "9688eefc2f75be8e5093d409a107adbd"
+            },
+            "VideoType": "VideoFile",
+            "ImageTags": {
+              "Primary": "dc153b72873b5da9d92158c4f05f5173",
+              "Logo": "a536def9c8eebed4bab6546850330a45"
+            },
+            "BackdropImageTags": [
+              "fd7b6e5e2c8adb95cade65932b4cec74"
+            ],
+            "ImageBlurHashes": {
+              "Backdrop": {
+                "fd7b6e5e2c8adb95cade65932b4cec74": "W23kvK58Eg^OEMOE=_IpNb-TNHS3I;xFxEJ9snso9_$i$$9^xF$$"
+              },
+              "Primary": {
+                "dc153b72873b5da9d92158c4f05f5173": "d670e~rsIpoyGEJ8NHw{RQs.s:NbrZw_$%Nb1wJRs.so"
+              },
+              "Logo": {
+                "a536def9c8eebed4bab6546850330a45": "O9KhCc|wAq;$SMWp2EE};%$5$5soWpsU1^,YsUoLw{FI$5"
+              }
+            },
+            "LocationType": "FileSystem",
+            "MediaType": "Video"
+          }
+        ],
+        "TotalRecordCount": 6,
+        "StartIndex": 0
+      }
+    }
+  }
+}

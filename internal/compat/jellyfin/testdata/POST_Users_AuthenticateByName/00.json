@@ -1,0 +1,149 @@
+{
+  "call_order": 6,
+  "request": {
+    "method": "POST",
+    "path": "/Users/AuthenticateByName",
+    "query": {},
+    "headers": {
+      "Accept": "application/json, application/octet-stream;q=0.9, */*;q=0.8",
+      "Authorization": "REDACTED",
+      "User-Agent": "Wholphin/1.0.7-0-g2b9af1e8 via jellyfin-sdk-kotlin (OkHttp/4.12.0)",
+      "Content-Type": "application/json; charset=utf-8",
+      "Content-Length": "36",
+      "Host": "jellyfin-ref:8096",
+      "Connection": "Keep-Alive",
+      "Accept-Encoding": "gzip"
+    },
+    "body": {
+      "mimeType": "application/json; charset=utf-8",
+      "json": {
+        "Username": "test",
+        "Pw": "REDACTED"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8",
+      "Server": "Kestrel",
+      "Content-Encoding": "gzip",
+      "Transfer-Encoding": "chunked",
+      "Vary": "Accept-Encoding"
+    },
+    "body": {
+      "mimeType": "application/json; charset=utf-8",
+      "json": {
+        "User": {
+          "Name": "test",
+          "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+          "Id": "89daa0a70eb84123a6d919a751f383e8",
+          "HasPassword": true,
+          "HasConfiguredPassword": true,
+          "HasConfiguredEasyPassword": false,
+          "EnableAutoLogin": false,
+          "LastLoginDate": "2026-08-26T17:04:48.6942458Z",
+          "LastActivityDate": "2026-08-26T17:04:48.6942458Z",
+          "Configuration": {
+            "PlayDefaultAudioTrack": true,
+            "SubtitleLanguagePreference": "",
+            "DisplayMissingEpisodes": false,
+            "GroupedFolders": [],
+            "SubtitleMode": "Default",
+            "DisplayCollectionsView": false,
+            "EnableLocalPassword": false,
+            "OrderedViews": [],
+            "LatestItemsExcludes": [],
+            "MyMediaExcludes": [],
+            "HidePlayedInLatest": true,
+            "RememberAudioSelections": true,
+            "RememberSubtitleSelections": true,
+            "EnableNextEpisodeAutoPlay": true,
+            "CastReceiverId": "F007D354"
+          },
+          "Policy": {
+            "IsAdministrator": true,
+            "IsHidden": true,
+            "EnableCollectionManagement": false,
+            "EnableSubtitleManagement": false,
+            "EnableLyricManagement": false,
+            "IsDisabled": false,
+            "BlockedTags": [],
+            "AllowedTags": [],
+            "EnableUserPreferenceAccess": true,
+            "AccessSchedules": [],
+            "BlockUnratedItems": [],
+            "EnableRemoteControlOfOtherUsers": true,
+            "EnableSharedDeviceControl": true,
+            "EnableRemoteAccess": true,
+            "EnableLiveTvManagement": false,
+            "EnableLiveTvAccess": true,
+            "EnableMediaPlayback": true,
+            "EnableAudioPlaybackTranscoding": true,
+            "EnableVideoPlaybackTranscoding": true,
+            "EnablePlaybackRemuxing": true,
+            "ForceRemoteSourceTranscoding": false,
+            "EnableContentDeletion": true,
+            "EnableContentDeletionFromFolders": [],
+            "EnableContentDownloading": true,
+            "EnableSyncTranscoding": true,
+            "EnableMediaConversion": true,
+            "EnabledDevices": [],
+            "EnableAllDevices": true,
+            "EnabledChannels": [],
+            "EnableAllChannels": true,
+            "EnabledFolders": [],
+            "EnableAllFolders": true,
+            "InvalidLoginAttemptCount": 0,
+            "LoginAttemptsBeforeLockout": -1,
+            "MaxActiveSessions": 0,
+            "EnablePublicSharing": true,
+            "BlockedMediaFolders": [],
+            "BlockedChannels": [],
+            "RemoteClientBitrateLimit": 0,
+            "AuthenticationProviderId": "Jellyfin.Server.Implementations.Users.DefaultAuthenticationProvider",
+            "PasswordResetProviderId": "Jellyfin.Server.Implementations.Users.DefaultPasswordResetProvider",
+            "SyncPlayAccess": "CreateAndJoinGroups"
+          }
+        },
+        "SessionInfo": {
+          "PlayState": {
+            "CanSeek": false,
+            "IsPaused": false,
+            "IsMuted": false,
+            "RepeatMode": "RepeatNone",
+            "PlaybackOrder": "Default"
+          },
+          "AdditionalUsers": [],
+          "Capabilities": {
+            "PlayableMediaTypes": [],
+            "SupportedCommands": [],
+            "SupportsMediaControl": false,
+            "SupportsPersistentIdentifier": true
+          },
+          "RemoteEndPoint": "172.19.0.3",
+          "PlayableMediaTypes": [],
+          "Id": "5291c701bce741e2be199c32117a1d7d",
+          "UserId": "89daa0a70eb84123a6d919a751f383e8",
+          "UserName": "test",
+          "Client": "Wholphin",
+          "LastActivityDate": "2026-08-26T17:04:48.8351676Z",
+          "LastPlaybackCheckIn": "0001-01-01T00:00:00.0000000Z",
+          "DeviceName": "SK1",
+          "DeviceId": "device-001",
+          "ApplicationVersion": "1.0.7-0-g2b9af1e8",
+          "IsActive": true,
+          "SupportsMediaControl": false,
+          "SupportsRemoteControl": false,
+          "NowPlayingQueue": [],
+          "NowPlayingQueueFullItems": [],
+          "HasCustomDeviceName": false,
+          "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+          "SupportedCommands": []
+        },
+        "AccessToken": "REDACTED",
+        "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322"
+      }
+    }
+  }
+}

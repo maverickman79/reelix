@@ -1,0 +1,89 @@
+{
+  "call_order": 137,
+  "request": {
+    "method": "GET",
+    "path": "/UserViews",
+    "query": {
+      "userId": "89daa0a7-0eb8-4123-a6d9-19a751f383e8",
+      "includeHidden": "false"
+    },
+    "headers": {
+      "Accept": "application/json, application/octet-stream;q=0.9, */*;q=0.8",
+      "Authorization": "REDACTED",
+      "User-Agent": "Wholphin/1.0.7-0-g2b9af1e8 via jellyfin-sdk-kotlin (OkHttp/4.12.0)",
+      "Host": "jellyfin-ref:8096",
+      "Connection": "Keep-Alive",
+      "Accept-Encoding": "gzip"
+    },
+    "body": {
+      "mimeType": "",
+      "text": ""
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8",
+      "Server": "Kestrel",
+      "Content-Encoding": "gzip",
+      "Transfer-Encoding": "chunked",
+      "Vary": "Accept-Encoding"
+    },
+    "body": {
+      "mimeType": "application/json; charset=utf-8",
+      "json": {
+        "Items": [
+          {
+            "Name": "Movies",
+            "ServerId": "fee2a21a83bb4317b1ae2eb1e29d6322",
+            "Id": "f137a2dd21bbc1b99aa5c0f6bf02a805",
+            "Etag": "90d0c678fd47447da2c1dd519575171d",
+            "DateCreated": "2026-08-26T15:47:18.4106532Z",
+            "DateLastMediaAdded": "0001-01-01T00:00:00.0000000Z",
+            "CanDelete": false,
+            "CanDownload": false,
+            "SortName": "movies",
+            "ExternalUrls": [],
+            "Path": "/config/root/default/Movies",
+            "EnableMediaSourceDisplay": true,
+            "ChannelId": null,
+            "Taglines": [],
+            "Genres": [],
+            "PlayAccess": "Full",
+            "RemoteTrailers": [],
+            "ProviderIds": {},
+            "IsFolder": true,
+            "ParentId": "e9d5075a555c1cbc394eec4cef295274",
+            "Type": "CollectionFolder",
+            "People": [],
+            "Studios": [],
+            "GenreItems": [],
+            "LocalTrailerCount": 0,
+            "UserData": {
+              "PlaybackPositionTicks": 0,
+              "PlayCount": 0,
+              "IsFavorite": false,
+              "Played": false,
+              "Key": "f137a2dd-21bb-c1b9-9aa5-c0f6bf02a805",
+              "ItemId": "f137a2dd21bbc1b99aa5c0f6bf02a805"
+            },
+            "ChildCount": 3,
+            "SpecialFeatureCount": 0,
+            "DisplayPreferencesId": "f137a2dd21bbc1b99aa5c0f6bf02a805",
+            "Tags": [],
+            "CollectionType": "movies",
+            "ImageTags": {},
+            "BackdropImageTags": [],
+            "ImageBlurHashes": {},
+            "LocationType": "FileSystem",
+            "MediaType": "Unknown",
+            "LockedFields": [],
+            "LockData": false
+          }
+        ],
+        "TotalRecordCount": 1,
+        "StartIndex": 0
+      }
+    }
+  }
+}

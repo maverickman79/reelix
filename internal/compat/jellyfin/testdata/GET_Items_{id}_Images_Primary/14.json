@@ -1,0 +1,34 @@
+{
+  "call_order": 104,
+  "request": {
+    "method": "GET",
+    "path": "/Items/a6c80810-7f3e-d9cb-aa16-138e6b21ebc1/Images/Primary",
+    "query": {},
+    "headers": {
+      "if-modified-since": "Wed, 26 Aug 2026 17:05:16 GMT",
+      "Authorization": "REDACTED",
+      "Host": "jellyfin-ref:8096",
+      "Connection": "Keep-Alive",
+      "Accept-Encoding": "gzip",
+      "User-Agent": "okhttp/5.4.0"
+    },
+    "body": {
+      "mimeType": "",
+      "text": ""
+    }
+  },
+  "response": {
+    "status": 404,
+    "headers": {
+      "Content-Type": "application/json; charset=utf-8",
+      "Server": "Kestrel",
+      "Content-Encoding": "gzip",
+      "Transfer-Encoding": "chunked",
+      "Vary": "Accept-Encoding"
+    },
+    "body": {
+      "mimeType": "application/json; charset=utf-8",
+      "json": "Sonny Castillo does not have an image of type Primary"
+    }
+  }
+}

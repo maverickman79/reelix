@@ -1,0 +1,41 @@
+{
+  "call_order": 88,
+  "request": {
+    "method": "GET",
+    "path": "/Videos/6763e17f-03d6-f385-1959-b6b784026495/stream",
+    "query": {
+      "static": "true",
+      "tag": "9ca955dc90ec0a7036b7b068e447de83",
+      "playSessionId": "be507901c9a74c3c97759733a663c50a",
+      "mediaSourceId": "6763e17f03d6f3851959b6b784026495",
+      "streamOptions": "{}",
+      "enableAudioVbrEncoding": "true"
+    },
+    "headers": {
+      "Icy-MetaData": "1",
+      "Range": "bytes=9471-",
+      "Accept-Encoding": "identity",
+      "User-Agent": "Dalvik/2.1.0 (Linux; U; Android 14; SK1 Build/UD2A.240505.001.W1)",
+      "Host": "jellyfin-ref:8096",
+      "Connection": "Keep-Alive"
+    },
+    "body": {
+      "mimeType": "",
+      "text": ""
+    }
+  },
+  "response": {
+    "status": 206,
+    "headers": {
+      "Content-Length": "5255900672",
+      "Content-Type": "video/x-matroska",
+      "Server": "Kestrel",
+      "Accept-Ranges": "bytes",
+      "Content-Range": "bytes 9471-5255910142/5255910143",
+      "Last-Modified": "Wed, 29 Jul 2026 20:44:42 GMT"
+    },
+    "body": {
+      "note": "stream body omitted"
+    }
+  }
+}

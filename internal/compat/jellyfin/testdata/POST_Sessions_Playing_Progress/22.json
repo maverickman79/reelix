@@ -1,0 +1,43 @@
+{
+  "call_order": 186,
+  "request": {
+    "method": "POST",
+    "path": "/Sessions/Playing/Progress",
+    "query": {},
+    "headers": {
+      "Accept": "application/json, application/octet-stream;q=0.9, */*;q=0.8",
+      "Authorization": "REDACTED",
+      "User-Agent": "Wholphin/1.0.7-0-g2b9af1e8 via jellyfin-sdk-kotlin (OkHttp/4.12.0)",
+      "Content-Type": "application/json; charset=utf-8",
+      "Content-Length": "273",
+      "Host": "jellyfin-ref:8096",
+      "Connection": "Keep-Alive",
+      "Accept-Encoding": "gzip"
+    },
+    "body": {
+      "mimeType": "application/json; charset=utf-8",
+      "json": {
+        "CanSeek": true,
+        "ItemId": "0584b843-8107-38ce-65e8-60027ca07137",
+        "AudioStreamIndex": 1,
+        "IsPaused": false,
+        "IsMuted": false,
+        "PositionTicks": 101260000,
+        "PlayMethod": "DirectPlay",
+        "PlaySessionId": "e326b815ed0e452bab9558c8f21d817b",
+        "RepeatMode": "RepeatNone",
+        "PlaybackOrder": "Default"
+      }
+    }
+  },
+  "response": {
+    "status": 204,
+    "headers": {
+      "Server": "Kestrel"
+    },
+    "body": {
+      "mimeType": "",
+      "text": ""
+    }
+  }
+}

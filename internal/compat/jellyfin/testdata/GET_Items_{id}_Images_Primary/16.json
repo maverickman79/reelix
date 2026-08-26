@@ -1,0 +1,41 @@
+{
+  "call_order": 111,
+  "request": {
+    "method": "GET",
+    "path": "/Items/9688eefc-2f75-be8e-5093-d409a107adbd/Images/Primary",
+    "query": {
+      "quality": "96",
+      "fillHeight": "344"
+    },
+    "headers": {
+      "if-modified-since": "Wed, 26 Aug 2026 15:54:50 GMT",
+      "Authorization": "REDACTED",
+      "Host": "jellyfin-ref:8096",
+      "Connection": "Keep-Alive",
+      "Accept-Encoding": "gzip",
+      "User-Agent": "okhttp/5.4.0"
+    },
+    "body": {
+      "mimeType": "",
+      "text": ""
+    }
+  },
+  "response": {
+    "status": 304,
+    "headers": {
+      "Content-Type": "image/jpeg",
+      "Server": "Kestrel",
+      "Age": "4297",
+      "Cache-Control": "public",
+      "Last-Modified": "Wed, 26 Aug 2026 15:54:50 GMT",
+      "Vary": "Accept",
+      "transferMode.dlna.org": "Interactive",
+      "realTimeInfo.dlna.org": "DLNA.ORG_TLAG=*",
+      "Content-Disposition": "attachment"
+    },
+    "body": {
+      "mimeType": "image/jpeg",
+      "text": ""
+    }
+  }
+}
