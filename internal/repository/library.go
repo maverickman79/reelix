@@ -116,6 +116,40 @@ func (r *LibraryRepository) ListPaths(ctx context.Context, libraryID uuid.UUID) 
 	return out, mapError("listing library paths", rows.Err())
 }
 
+// ListPathsFor returns the paths of several libraries at once, keyed by
+// library id.
+//
+// This exists so listing N libraries costs two queries rather than N+1. Every
+// library in ids appears in the result only if it has paths; callers should
+// treat a missing key as an empty slice.
+func (r *LibraryRepository) ListPathsFor(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID][]domain.LibraryPath, error) {
+	out := make(map[uuid.UUID][]domain.LibraryPath, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+
+	const q = `
+		SELECT id, library_id, path, created_at
+		FROM library_paths
+		WHERE library_id = ANY($1)
+		ORDER BY library_id, id`
+
+	rows, err := r.q.Query(ctx, q, ids)
+	if err != nil {
+		return nil, mapError("listing library paths", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var p domain.LibraryPath
+		if err := rows.Scan(&p.ID, &p.LibraryID, &p.Path, &p.CreatedAt); err != nil {
+			return nil, mapError("listing library paths", err)
+		}
+		out[p.LibraryID] = append(out[p.LibraryID], p)
+	}
+	return out, mapError("listing library paths", rows.Err())
+}
+
 // Delete removes a library. Its paths, items, files, and streams go with it
 // through ON DELETE CASCADE.
 func (r *LibraryRepository) Delete(ctx context.Context, id uuid.UUID) error {

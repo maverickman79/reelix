@@ -48,6 +48,18 @@ type User struct {
 	UpdatedAt    time.Time
 }
 
+// APIToken is a native API credential belonging to a user.
+//
+// The plaintext token is never stored and never appears in this struct; only
+// its SHA-256 is persisted. See internal/auth.
+type APIToken struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	TokenHash string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
 // Library is a logical collection of media. Its filesystem locations are
 // LibraryPath values, not a field on the library itself.
 type Library struct {
