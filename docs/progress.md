@@ -21,6 +21,92 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-26 — Step 2: persistence
+
+**Completed:**
+- Migration runner in `internal/db`: SQL embedded via `embed.FS`, a
+  `schema_migrations` ledger, one transaction per migration wrapping both the
+  DDL and its ledger insert, and a session advisory lock so concurrent
+  starts serialise. Forward-only; there are no down migrations.
+- `0001_init.sql` — seven tables: `schema_migrations`, `users`, `libraries`,
+  `library_paths`, `media_items`, `media_files`, `media_streams`.
+- `internal/domain`: plain models, no struct tags in either direction.
+- `internal/repository`: `UserRepository`, `LibraryRepository`,
+  `MediaRepository`, all taking a `db.Querier` satisfied by both the pool and
+  a transaction. `db.InTx` composes them atomically.
+- Migrations run at startup before the listener binds.
+- `docker-compose.test.yml`: dev-only override publishing Postgres on
+  `127.0.0.1` so host-side integration tests can reach it.
+
+**Verified:**
+- `gofmt`, `go vet ./...` clean. 28 tests pass with a database; all 20
+  integration tests skip cleanly without `REELIX_TEST_DB_DSN`, so
+  `go test ./...` is green on a machine with no Postgres.
+- **Completion criterion, clean apply:** migrations applied to a fresh
+  database; all seven tables present.
+- **Completion criterion, idempotent:** four consecutive runs; ledger row
+  count and every `applied_at` unchanged. Confirmed again on the real
+  deployment — app restarted at 18:35:19 logged `schema up to date` and left
+  migration 1's `applied_at` at 18:30:47.
+- Checksum drift and unknown-applied-version both rejected at startup with
+  explanatory errors. Four concurrent runners produce exactly one apply.
+- `docker compose up -d --build`: both containers healthy, migration applied,
+  `/health` 200, no errors in either log.
+- Testing used scratch databases created and dropped inside the running
+  instance. The existing `pgdata` volume was never dropped.
+
+**In flight:**
+- Nothing.
+
+**Blocked:**
+- Nothing.
+
+**Next step:**
+- Step 3: first-run administrator creation, password hashing, native auth,
+  create/list library over `/api/v1/*`.
+
+**Decisions made:**
+- Dependency added: `github.com/jackc/pgx/v5` v5.10.0, using the native
+  `pgxpool` interface rather than `database/sql` — typed uuid/jsonb handling
+  and a built-in pool, so one dependency instead of two. Pure Go, so
+  `CGO_ENABLED=0` and the static binary are unaffected. Brings the module
+  count from zero to seven: `pgpassfile`, `pgservicefile`, `puddle/v2`,
+  `golang.org/x/crypto`, `golang.org/x/sync`, `golang.org/x/text`.
+- Migration tooling is hand-rolled, no dependency. `golang-migrate` and
+  `goose` carry driver matrices and CLI surface for a project with one
+  database.
+- **pgx handles stdlib `uuid.UUID` natively — no custom codec is needed.**
+  The plan assumed one would be; `[16]byte` resolves through pgx's
+  underlying-type wrapping. A round-trip test pins the behaviour, since it is
+  something Reelix depends on but does not control across pgx upgrades.
+- IDs are generated in Go, never by a column default: Postgres 17 has no v7
+  generator (that is 18), and generating application-side means the id is
+  known before the INSERT.
+- Applied migrations are immutable. An edited file whose checksum no longer
+  matches the ledger is a startup error, not a silent skip — otherwise new
+  and existing deployments diverge invisibly.
+- A database carrying a migration version this binary does not have is also a
+  startup error: an older binary must not serve a newer schema.
+- Repositories are concrete types, not interfaces. Their consumers do not
+  exist yet, and in Go the interface belongs to the consumer; Step 3 declares
+  the method set it needs.
+- `media_files.path` is globally unique so a re-scan updates in place. Upsert
+  preserves `id` and `created_at`, so anything already referencing a file
+  keeps pointing at it.
+- `library_paths` is a separate table on constitutional instruction even
+  though 0.0.1 writes exactly one row per library.
+- Usernames use a unique index on `lower(username)` rather than `citext`,
+  which would need the extension installed before the first migration runs.
+- Test databases are per-test scratch databases, created and dropped by the
+  test. No testcontainers: a heavyweight test dependency right after taking
+  the first runtime one.
+- Postgres publishes no host port in the canonical stack. The loopback
+  binding lives in `docker-compose.test.yml` and is not merged into
+  `docker-compose.yml`.
+- `/health` still performs no I/O. The Step 1 entry anticipated adding a
+  `checks` object here; Step 2 was scoped with no API surface, so that moves
+  to whichever step first needs it.
+
 ## 2026-08-26 — Step 0 complete: Wholphin capture
 
 **Completed:**
