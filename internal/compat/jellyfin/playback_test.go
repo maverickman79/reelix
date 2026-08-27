@@ -104,9 +104,28 @@ func seedPlayable(t *testing.T, h *harness, size int64, markers map[int64]int) p
 
 	video, audio := "h264", "eac3"
 	width, height, channels := 1920, 1080, 6
+
+	// The metadata a real probe of this container returns. Seeded for the
+	// same reason as in items_test.go, and with the same caveat: it is what
+	// makes the response renderable, not what justifies retiring an
+	// allowance. See the note above absentInReelix in fixture_test.go.
+	eng, profile, pixFmt := "eng", "High", "yuv420p"
+	audioTitle, level := "Surround AC3 5.1", 40
+	frameRate := 23.976023976023978
+
 	if err := media.ReplaceStreams(ctx, file.ID, []domain.MediaStream{
-		{StreamIndex: 0, Kind: domain.StreamKindVideo, Codec: &video, Width: &width, Height: &height},
-		{StreamIndex: 1, Kind: domain.StreamKindAudio, Codec: &audio, Channels: &channels},
+		{
+			StreamIndex: 0, Kind: domain.StreamKindVideo, Codec: &video,
+			Width: &width, Height: &height,
+			Language: &eng, Profile: &profile, Level: &level, PixelFormat: &pixFmt,
+			AverageFrameRate: &frameRate, RealFrameRate: &frameRate,
+			IsDefault: true,
+		},
+		{
+			StreamIndex: 1, Kind: domain.StreamKindAudio, Codec: &audio,
+			Channels: &channels, Language: &eng, Title: &audioTitle,
+			IsDefault: true,
+		},
 	}); err != nil {
 		t.Fatalf("creating streams: %v", err)
 	}

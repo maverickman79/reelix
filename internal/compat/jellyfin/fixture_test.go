@@ -159,8 +159,18 @@ func because(reason string) allowance {
 // server had a value.
 //
 // A "$..Field" key matches that field wherever it appears. Nothing is listed
-// here because a test was inconvenient; every entry is a subsystem 0.0.1
-// excludes, and each one disappears when that subsystem arrives.
+// here because a test was inconvenient; every entry is a subsystem Reelix
+// does not have yet, and each one disappears when that subsystem arrives.
+//
+// An entry is retired ONLY when Reelix emits the field. The compat tests seed
+// their own streams, so removing an entry also means seeding a value for it —
+// and that seed is not the justification. For the 0.0.2 stream metadata the
+// justification is that the field travels ffprobe -> schema -> DTO, proved
+// away from this package by TestParseProbeOutput (internal/media),
+// TestStreamMetadataRoundTrip (internal/repository),
+// TestScanPersistsStreamMetadata (internal/service) and
+// TestStreamMetadataMigrationClearsProbedAt (internal/db). A future retirement
+// with no such proof behind it is this list eroding.
 var absentInReelix = map[string]allowance{
 	// Metadata scraping is excluded from 0.0.1, so nothing describes a movie
 	// beyond what its filename and container say.
@@ -175,40 +185,49 @@ var absentInReelix = map[string]allowance{
 	// Artwork downloading is excluded, so there is no image to measure.
 	"$..PrimaryImageAspectRatio": because("no artwork in 0.0.1, so there is no primary image to have a ratio"),
 
-	// The scanner stores index, kind, codec, dimensions, channels and
-	// bitrate. Everything else on a stream needs a wider probe, a migration
-	// and a re-scan — a 0.0.2 change.
-	"$..Language":                 because("the scanner does not record stream language yet (0.0.2)"),
-	"$..Title":                    because("the scanner does not record container track titles yet (0.0.2)"),
-	"$..ChannelLayout":            because("the scanner does not record channel layout yet (0.0.2)"),
-	"$..SampleRate":               because("the scanner does not record sample rate yet (0.0.2)"),
-	"$..Profile":                  because("the scanner does not record codec profile yet (0.0.2)"),
-	"$..Level":                    because("the scanner does not record codec level yet (0.0.2)"),
-	"$..BitDepth":                 because("the scanner does not record bit depth yet (0.0.2)"),
-	"$..PixelFormat":              because("the scanner does not record pixel format yet (0.0.2)"),
-	"$..RefFrames":                because("the scanner does not record reference frames yet (0.0.2)"),
-	"$..NalLengthSize":            because("the scanner does not record NAL length size yet (0.0.2)"),
-	"$..TimeBase":                 because("the scanner does not record the stream time base yet (0.0.2)"),
-	"$..AverageFrameRate":         because("the scanner does not record frame rates yet (0.0.2)"),
-	"$..RealFrameRate":            because("the scanner does not record frame rates yet (0.0.2)"),
-	"$..ReferenceFrameRate":       because("the scanner does not record frame rates yet (0.0.2)"),
-	"$..ColorSpace":               because("the scanner does not record colour metadata yet (0.0.2)"),
-	"$..ColorTransfer":            because("the scanner does not record colour metadata yet (0.0.2)"),
-	"$..ColorPrimaries":           because("the scanner does not record colour metadata yet (0.0.2)"),
-	"$..IsAVC":                    because("the scanner does not record whether a stream is AVC yet (0.0.2)"),
-	"$..IsAnamorphic":             because("the scanner does not record anamorphic flags yet (0.0.2)"),
-	"$..BitRate":                  because("ffprobe reports no bitrate for some streams; null rather than a guess"),
-	"$..LocalizedDefault":         because("Reelix does not localise track labels; the client has its own strings"),
-	"$..LocalizedExternal":        because("Reelix does not localise track labels"),
-	"$..LocalizedForced":          because("Reelix does not localise track labels"),
-	"$..LocalizedHearingImpaired": because("Reelix does not localise track labels"),
-	"$..LocalizedUndefined":       because("Reelix does not localise track labels"),
+	// Stream metadata the scanner still does not probe.
+	//
+	// Language, Title, Profile, PixelFormat and the two measured frame rates
+	// were listed here until 0.0.2 and are gone because Reelix emits them,
+	// not because this list was relaxed. See the note above absentInReelix.
+	"$..ChannelLayout":  because("derived from the channel count for DisplayTitle only; the column is not stored"),
+	"$..SampleRate":     because("the scanner does not record sample rate (0.0.3)"),
+	"$..BitDepth":       because("the scanner does not record bit depth (0.0.3)"),
+	"$..RefFrames":      because("the scanner does not record reference frames (0.0.3)"),
+	"$..NalLengthSize":  because("the scanner does not record NAL length size (0.0.3)"),
+	"$..TimeBase":       because("the scanner does not record the stream time base (0.0.3)"),
+	"$..ColorSpace":     because("the scanner does not record colour metadata (0.0.3)"),
+	"$..ColorTransfer":  because("the scanner does not record colour metadata (0.0.3)"),
+	"$..ColorPrimaries": because("the scanner does not record colour metadata (0.0.3)"),
+	"$..IsAVC":          because("the scanner does not record whether a stream is AVC (0.0.3)"),
+	"$..IsAnamorphic":   because("the scanner does not record anamorphic flags (0.0.3)"),
+	"$..BitRate":        because("ffprobe reports no bitrate for some streams; null rather than a guess"),
 
-	// The reference server reports the video's dimensions on image-based
-	// subtitle tracks. Reelix does not probe subtitle geometry, and a video
-	// stream's dimensions are still required — this covers subtitles only.
-	"$..MediaStreams[Subtitle].Width":  because("the scanner does not probe subtitle geometry (0.0.2)"),
-	"$..MediaStreams[Subtitle].Height": because("the scanner does not probe subtitle geometry (0.0.2)"),
+	// Reelix records avg_frame_rate and r_frame_rate, both measured. It does
+	// not emit a reference rate: the captures show all three equal, but that
+	// is constant-frame-rate content agreeing with itself, and what the
+	// reference server means by "reference" is not something the recorded
+	// traffic reveals. A value that happens to be right for CFR is a guess.
+	"$..ReferenceFrameRate": because("Reelix stores two measured frame rates and will not guess a third"),
+
+	// Level is emitted for video, where ffprobe reports one. The recorded
+	// server sent 0 on audio and subtitle streams, which is a non-nullable
+	// C# int with nothing in it rather than a measurement, so those two
+	// stay null instead of being filled with zeroes to match.
+	"$..MediaStreams[Audio].Level":    because("ffprobe reports no codec level for an audio stream; the recorded 0 is a .NET default"),
+	"$..MediaStreams[Subtitle].Level": because("ffprobe reports no codec level for a subtitle stream; the recorded 0 is a .NET default"),
+	"$..LocalizedDefault":             because("Reelix does not localise track labels; the client has its own strings"),
+	"$..LocalizedExternal":            because("Reelix does not localise track labels"),
+	"$..LocalizedForced":              because("Reelix does not localise track labels"),
+	"$..LocalizedHearingImpaired":     because("Reelix does not localise track labels"),
+	"$..LocalizedUndefined":           because("Reelix does not localise track labels"),
+
+	// The reference server sent 0 for both on subtitle tracks — a
+	// non-nullable int with nothing in it, not a measurement. Reelix does
+	// not probe subtitle geometry and will not write zeroes to match. A
+	// video stream's dimensions are still required; this covers subtitles.
+	"$..MediaStreams[Subtitle].Width":  because("the scanner does not probe subtitle geometry; the recorded 0 is a .NET default"),
+	"$..MediaStreams[Subtitle].Height": because("the scanner does not probe subtitle geometry; the recorded 0 is a .NET default"),
 
 	// Playback state arrives with Step 7.
 	"$..LastPlayedDate": because("no playback state until Step 7; nothing has ever been played"),

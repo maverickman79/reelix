@@ -3,6 +3,7 @@ package jellyfin
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -90,13 +91,48 @@ func seedMedia(t *testing.T, h *harness) seededMedia {
 		codec, audio, subtitle := m.codec, "eac3", "subrip"
 		width, height, channels := m.width, m.height, m.channels
 
+		// The metadata a real ffprobe run returns for these containers. It
+		// is seeded because the fixture comparison renders whatever the
+		// repository holds, and an unprobed stream would render nulls.
+		//
+		// Seeding it is NOT what retires the allowances in fixture_test.go.
+		// The allowances are retired because the fields are plumbed from
+		// ffprobe through the schema to the DTO, which is proved away from
+		// this seed: TestParseProbeOutput in internal/media,
+		// TestStreamMetadataRoundTrip in internal/repository,
+		// TestScanPersistsStreamMetadata in internal/service, and
+		// TestStreamMetadataMigrationClearsProbedAt in internal/db.
+		eng, profile, pixFmt := "eng", "High", "yuv420p"
+		audioTitle, level := "Surround AC3 5.1", 40
+		frameRate := 23.976023976023978
+
 		streams := []domain.MediaStream{
-			{StreamIndex: 0, Kind: domain.StreamKindVideo, Codec: &codec, Width: &width, Height: &height},
-			{StreamIndex: 1, Kind: domain.StreamKindAudio, Codec: &audio, Channels: &channels},
+			{
+				StreamIndex: 0, Kind: domain.StreamKindVideo, Codec: &codec,
+				Width: &width, Height: &height,
+				Language: &eng, Profile: &profile, Level: &level,
+				PixelFormat:      &pixFmt,
+				AverageFrameRate: &frameRate, RealFrameRate: &frameRate,
+				IsDefault: true,
+			},
+			{
+				StreamIndex: 1, Kind: domain.StreamKindAudio, Codec: &audio,
+				Channels: &channels, Language: &eng, Title: &audioTitle,
+				IsDefault: true,
+			},
 		}
 		for i := range m.subtitles {
+			// The first subtitle is an SDH track, so a seeded library
+			// exercises a named, hearing-impaired stream rather than only
+			// anonymous ones.
+			title := fmt.Sprintf("Subtitle %d", i+1)
+			hearingImpaired := false
+			if i == 0 {
+				title, hearingImpaired = "SDH", true
+			}
 			streams = append(streams, domain.MediaStream{
 				StreamIndex: i + 2, Kind: domain.StreamKindSubtitle, Codec: &subtitle,
+				Language: &eng, Title: &title, IsHearingImpaired: hearingImpaired,
 			})
 		}
 		if err := media.ReplaceStreams(ctx, file.ID, streams); err != nil {
@@ -401,11 +437,11 @@ func TestItemDetailCarriesThePlayableFile(t *testing.T) {
 		t.Errorf("video VideoRange = %q, want the Unknown member", video.VideoRange)
 	}
 
-	// The codec renders as the name the recorded server used rather than as
-	// ffprobe's identifier. This stream carries no language tag, so the
-	// label says nothing about one.
+	// The seeded track is tagged "eng" and titled "Surround AC3 5.1", so the
+	// label leads with the title, names the language, and drops the channel
+	// layout the title already carries.
 	if audio := got.MediaStreams[1]; audio.Type != "Audio" ||
-		audio.DisplayTitle != "Dolby Digital+ - 5.1" {
+		audio.DisplayTitle != "Surround AC3 5.1 - English - Dolby Digital+ - Default" {
 		t.Errorf("second stream = %+v, want the audio", audio)
 	}
 	if sub := got.MediaStreams[2]; sub.Type != "Subtitle" || !sub.IsTextSubtitleStream {
