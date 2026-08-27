@@ -2,6 +2,9 @@ package repository
 
 import (
 	"context"
+	"fmt"
+	"strings"
+	"time"
 	"uuid"
 
 	"github.com/maverickman79/reelix/internal/db"
@@ -242,4 +245,282 @@ func scanFile(row interface{ Scan(...any) error }, op string) (domain.MediaFile,
 		return domain.MediaFile{}, mapError(op, err)
 	}
 	return f, nil
+}
+
+// ItemSort names an ordering the browse query supports.
+//
+// These are Reelix's own orderings, not Jellyfin's. The compatibility layer
+// maps a client's sortBy onto one of them, and is responsible for deciding
+// what to do with an ordering Reelix cannot serve.
+type ItemSort string
+
+const (
+	ItemSortTitle     ItemSort = "title"
+	ItemSortCreatedAt ItemSort = "created_at"
+	ItemSortYear      ItemSort = "year"
+	ItemSortRandom    ItemSort = "random"
+)
+
+// ItemQuery selects, orders, and pages media items.
+//
+// A zero value selects every item in every library, ordered by title. Empty
+// id slices mean "no filter" rather than "match nothing", so that a caller
+// browsing everything does not have to special-case them.
+type ItemQuery struct {
+	LibraryIDs []uuid.UUID
+	ItemIDs    []uuid.UUID
+
+	// MaxYear excludes items released after it. Clients use this to keep
+	// unreleased titles out of a browse row.
+	MaxYear *int
+
+	Sort       ItemSort
+	Descending bool
+
+	Offset int
+	// Limit of zero returns every matching row.
+	Limit int
+}
+
+// ItemWithFile is a media item together with the file that backs it.
+//
+// The two are fetched in one query because every caller that lists items needs
+// the container and duration with them, and fetching files separately would be
+// an N+1 across a library.
+type ItemWithFile struct {
+	Item domain.MediaItem
+
+	// File is nil when an item has no file row, which a partially completed
+	// scan can produce.
+	File *domain.MediaFile
+
+	// HasSubtitles reports whether the file carries at least one subtitle
+	// stream. Computed in SQL rather than by loading every stream.
+	HasSubtitles bool
+}
+
+// ListItems returns the items matching q, and the total number of matches
+// ignoring Offset and Limit.
+//
+// The total is what a client needs to render a scrollbar, so it is counted
+// even when a page is returned.
+func (r *MediaRepository) ListItems(ctx context.Context, q ItemQuery) ([]ItemWithFile, int, error) {
+	where, args := itemFilters(q)
+
+	total, err := r.countItems(ctx, where, args)
+	if err != nil {
+		return nil, 0, err
+	}
+	if total == 0 {
+		return nil, 0, nil
+	}
+
+	// The file is joined laterally rather than with a plain LEFT JOIN: an item
+	// may have several files, and this picks exactly one of them without
+	// multiplying the item rows.
+	query := `
+		SELECT ` + prefixed("m", itemColumns) + `,
+		       f.id, f.media_item_id, f.path, f.filename, f.size_bytes,
+		       f.container, f.duration_seconds, f.probed_at, f.created_at, f.updated_at,
+		       COALESCE(f.has_subtitles, false)
+		FROM media_items m
+		LEFT JOIN LATERAL (
+			SELECT mf.*,
+			       EXISTS (
+			           SELECT 1 FROM media_streams s
+			           WHERE s.media_file_id = mf.id AND s.kind = 'subtitle'
+			       ) AS has_subtitles
+			FROM media_files mf
+			WHERE mf.media_item_id = m.id
+			ORDER BY mf.id
+			LIMIT 1
+		) f ON true` +
+		whereClause(where) + orderClause(q)
+
+	if q.Limit > 0 {
+		args = append(args, q.Limit)
+		query += fmt.Sprintf(" LIMIT $%d", len(args))
+	}
+	if q.Offset > 0 {
+		args = append(args, q.Offset)
+		query += fmt.Sprintf(" OFFSET $%d", len(args))
+	}
+
+	rows, err := r.q.Query(ctx, query, args...)
+	if err != nil {
+		return nil, 0, mapError("listing items", err)
+	}
+	defer rows.Close()
+
+	var out []ItemWithFile
+	for rows.Next() {
+		var it ItemWithFile
+
+		// Every file column is scanned through a pointer, including the ones
+		// the schema declares NOT NULL: an item with no file row leaves all
+		// of them null, which is not a corrupt row but a scan interrupted
+		// between writing the item and writing its file.
+		var (
+			fileID      *uuid.UUID
+			mediaItemID *uuid.UUID
+			path        *string
+			filename    *string
+			size        *int64
+			container   *string
+			duration    *float64
+			probedAt    *time.Time
+			createdAt   *time.Time
+			updatedAt   *time.Time
+		)
+
+		err := rows.Scan(&it.Item.ID, &it.Item.LibraryID, &it.Item.Kind, &it.Item.Title,
+			&it.Item.Year, &it.Item.SourcePath, &it.Item.CreatedAt, &it.Item.UpdatedAt,
+			&fileID, &mediaItemID, &path, &filename, &size,
+			&container, &duration, &probedAt, &createdAt, &updatedAt,
+			&it.HasSubtitles)
+		if err != nil {
+			return nil, 0, mapError("listing items", err)
+		}
+
+		if fileID != nil {
+			it.File = &domain.MediaFile{
+				ID:              *fileID,
+				MediaItemID:     derefOr(mediaItemID, it.Item.ID),
+				Path:            derefOr(path, ""),
+				Filename:        derefOr(filename, ""),
+				SizeBytes:       derefOr(size, 0),
+				Container:       container,
+				DurationSeconds: duration,
+				ProbedAt:        probedAt,
+				CreatedAt:       derefOr(createdAt, time.Time{}),
+				UpdatedAt:       derefOr(updatedAt, time.Time{}),
+			}
+		}
+		out = append(out, it)
+	}
+	return out, total, mapError("listing items", rows.Err())
+}
+
+// derefOr reads a pointer scanned from a nullable column.
+func derefOr[T any](v *T, fallback T) T {
+	if v == nil {
+		return fallback
+	}
+	return *v
+}
+
+// countItems returns the number of items matching the filters.
+func (r *MediaRepository) countItems(ctx context.Context, where []string, args []any) (int, error) {
+	var total int
+	err := r.q.QueryRow(ctx,
+		`SELECT count(*) FROM media_items m`+whereClause(where), args...).Scan(&total)
+	if err != nil {
+		return 0, mapError("counting items", err)
+	}
+	return total, nil
+}
+
+// CountItemsByLibrary returns the number of items in each of the given
+// libraries. Libraries with no items are absent from the map.
+func (r *MediaRepository) CountItemsByLibrary(ctx context.Context, libraryIDs []uuid.UUID) (map[uuid.UUID]int, error) {
+	counts := make(map[uuid.UUID]int, len(libraryIDs))
+	if len(libraryIDs) == 0 {
+		return counts, nil
+	}
+
+	const q = `
+		SELECT library_id, count(*)
+		FROM media_items
+		WHERE library_id = ANY($1)
+		GROUP BY library_id`
+
+	rows, err := r.q.Query(ctx, q, libraryIDs)
+	if err != nil {
+		return nil, mapError("counting items by library", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			id uuid.UUID
+			n  int
+		)
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, mapError("counting items by library", err)
+		}
+		counts[id] = n
+	}
+	return counts, mapError("counting items by library", rows.Err())
+}
+
+// itemFilters builds the WHERE fragments and their arguments.
+func itemFilters(q ItemQuery) ([]string, []any) {
+	var (
+		where []string
+		args  []any
+	)
+
+	add := func(fragment string, arg any) {
+		args = append(args, arg)
+		where = append(where, fmt.Sprintf(fragment, len(args)))
+	}
+
+	if len(q.LibraryIDs) > 0 {
+		add("m.library_id = ANY($%d)", q.LibraryIDs)
+	}
+	if len(q.ItemIDs) > 0 {
+		add("m.id = ANY($%d)", q.ItemIDs)
+	}
+	if q.MaxYear != nil {
+		// Items with no year are kept: an unknown release date is not
+		// evidence that the item is unreleased.
+		add("(m.year IS NULL OR m.year <= $%d)", *q.MaxYear)
+	}
+	return where, args
+}
+
+// whereClause renders the fragments, or nothing when there are none.
+func whereClause(where []string) string {
+	if len(where) == 0 {
+		return ""
+	}
+	return " WHERE " + strings.Join(where, " AND ")
+}
+
+// orderClause renders the sort.
+//
+// Every ordering ends in the item id so that paging is stable: two items with
+// the same title must not swap places between page one and page two. Random is
+// the deliberate exception — it is reshuffled per query by definition, and a
+// client asking for it is not paging through it.
+func orderClause(q ItemQuery) string {
+	if q.Sort == ItemSortRandom {
+		return " ORDER BY random()"
+	}
+
+	column := "lower(m.title)"
+	switch q.Sort {
+	case ItemSortCreatedAt:
+		column = "m.created_at"
+	case ItemSortYear:
+		column = "m.year"
+	}
+
+	direction := "ASC"
+	if q.Descending {
+		direction = "DESC"
+	}
+
+	// NULLS LAST in both directions: an item with no year belongs at the end
+	// of the list, not at the top of a descending one.
+	return " ORDER BY " + column + " " + direction + " NULLS LAST, m.id " + direction
+}
+
+// prefixed qualifies a column list with a table alias.
+func prefixed(alias, columns string) string {
+	parts := strings.Split(columns, ",")
+	for i, p := range parts {
+		parts[i] = alias + "." + strings.TrimSpace(p)
+	}
+	return strings.Join(parts, ", ")
 }
