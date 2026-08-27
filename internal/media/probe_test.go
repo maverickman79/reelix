@@ -22,24 +22,38 @@ const realFFprobeOutput = `{
             "index": 0,
             "codec_name": "h264",
             "codec_type": "video",
+            "profile": "High",
+            "level": 40,
+            "pix_fmt": "yuv420p",
             "width": 1920,
             "height": 1080,
+            "r_frame_rate": "24000/1001",
+            "avg_frame_rate": "24000/1001",
             "bit_rate": "8000000",
+            "disposition": { "default": 1, "forced": 0, "hearing_impaired": 0 },
             "tags": { "language": "eng" }
         },
         {
             "index": 1,
             "codec_name": "ac3",
             "codec_type": "audio",
+            "level": -99,
             "channels": 6,
+            "r_frame_rate": "0/0",
+            "avg_frame_rate": "0/0",
             "bit_rate": "640000",
-            "tags": { "language": "eng" }
+            "disposition": { "default": 1, "forced": 0, "hearing_impaired": 0 },
+            "tags": { "language": "eng", "title": "Surround AC3 5.1" }
         },
         {
             "index": 2,
             "codec_name": "subrip",
             "codec_type": "subtitle",
-            "tags": { "language": "eng" }
+            "level": 0,
+            "r_frame_rate": "0/0",
+            "avg_frame_rate": "0/0",
+            "disposition": { "default": 0, "forced": 1, "hearing_impaired": 1 },
+            "tags": { "language": "eng", "title": "SDH" }
         },
         {
             "index": 3,
@@ -92,6 +106,29 @@ func TestParseProbeOutput(t *testing.T) {
 	if video.Channels != nil {
 		t.Errorf("video stream carries channels = %v, want nil", *video.Channels)
 	}
+	if video.Profile == nil || *video.Profile != "High" {
+		t.Errorf("video profile = %v, want High", video.Profile)
+	}
+	if video.Level == nil || *video.Level != 40 {
+		t.Errorf("video level = %v, want 40", video.Level)
+	}
+	if video.PixelFormat == nil || *video.PixelFormat != "yuv420p" {
+		t.Errorf("video pixel format = %v, want yuv420p", video.PixelFormat)
+	}
+	// 24000/1001 is 23.976023..., which is why the rational is carried
+	// through as a division rather than rounded at parse time.
+	if video.RealFrameRate == nil || *video.RealFrameRate < 23.97 || *video.RealFrameRate > 23.98 {
+		t.Errorf("video real frame rate = %v, want ~23.976", video.RealFrameRate)
+	}
+	if video.AverageFrameRate == nil || *video.AverageFrameRate < 23.97 || *video.AverageFrameRate > 23.98 {
+		t.Errorf("video average frame rate = %v, want ~23.976", video.AverageFrameRate)
+	}
+	if video.Language == nil || *video.Language != "eng" {
+		t.Errorf("video language = %v, want eng", video.Language)
+	}
+	if !video.IsDefault {
+		t.Error("video stream is not marked default, but the disposition says it is")
+	}
 
 	audio := got.Streams[1]
 	if audio.Kind != "audio" || audio.Codec != "ac3" {
@@ -103,10 +140,45 @@ func TestParseProbeOutput(t *testing.T) {
 	if audio.Width != nil {
 		t.Errorf("audio stream carries width = %v, want nil", *audio.Width)
 	}
+	if audio.Title == nil || *audio.Title != "Surround AC3 5.1" {
+		t.Errorf("audio title = %v, want \"Surround AC3 5.1\"", audio.Title)
+	}
+	// ffprobe writes -99 for an unknown level. Storing it would put a
+	// sentinel in a column that is read as a codec level.
+	if audio.Level != nil {
+		t.Errorf("audio level = %v, want nil (ffprobe reported -99)", *audio.Level)
+	}
+	// "0/0" is ffprobe saying there is no frame rate, not zero frames.
+	if audio.RealFrameRate != nil || audio.AverageFrameRate != nil {
+		t.Errorf("audio stream carries a frame rate: real=%v avg=%v",
+			audio.RealFrameRate, audio.AverageFrameRate)
+	}
+	if !audio.IsDefault || audio.IsForced || audio.IsHearingImpaired {
+		t.Errorf("audio dispositions = default:%v forced:%v hearing_impaired:%v, want true/false/false",
+			audio.IsDefault, audio.IsForced, audio.IsHearingImpaired)
+	}
 
 	subtitle := got.Streams[2]
 	if subtitle.Kind != "subtitle" || subtitle.Codec != "subrip" {
 		t.Errorf("stream 2 = %+v", subtitle)
+	}
+	if subtitle.Title == nil || *subtitle.Title != "SDH" {
+		t.Errorf("subtitle title = %v, want SDH", subtitle.Title)
+	}
+	// A level of 0 on a subtitle stream is C#-flavoured nothing, not a level.
+	if subtitle.Level != nil {
+		t.Errorf("subtitle level = %v, want nil (ffprobe reported 0)", *subtitle.Level)
+	}
+	// The three dispositions must be read independently: an SDH track that
+	// arrives merely "forced" is the bug this whole change exists to fix.
+	if subtitle.IsDefault {
+		t.Error("subtitle marked default, but the disposition says otherwise")
+	}
+	if !subtitle.IsForced {
+		t.Error("subtitle not marked forced, but the disposition says it is")
+	}
+	if !subtitle.IsHearingImpaired {
+		t.Error("subtitle not marked hearing impaired, but the disposition says it is")
 	}
 }
 
@@ -135,7 +207,48 @@ func TestParseProbeOutputMissingFields(t *testing.T) {
 	if s.Width != nil || s.Height != nil || s.BitRate != nil || s.Channels != nil {
 		t.Errorf("absent fields became values: %+v", s)
 	}
+	// A container with no tags, no disposition object and no profile must
+	// produce nils and falses rather than empty strings and zeroes.
+	if s.Language != nil || s.Title != nil || s.Profile != nil ||
+		s.Level != nil || s.PixelFormat != nil {
+		t.Errorf("absent metadata became values: %+v", s)
+	}
+	if s.AverageFrameRate != nil || s.RealFrameRate != nil {
+		t.Errorf("absent frame rates became values: %+v", s)
+	}
+	if s.IsDefault || s.IsForced || s.IsHearingImpaired {
+		t.Errorf("absent dispositions became true: %+v", s)
+	}
 }
+
+// TestParseRational pins the frame-rate forms ffprobe actually emits.
+func TestParseRational(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want *float64
+	}{
+		{"24000/1001", ptr(23.976023976023978)},
+		{"25/1", ptr(25.0)},
+		{"0/0", nil},  // ffprobe's "this stream has no frame rate"
+		{"30/0", nil}, // a denominator of zero is not 30 fps
+		{"0/1", nil},  // nor is a numerator of zero 0 fps
+		{"", nil},     // absent altogether
+		{"25", nil},   // not a rational
+		{"a/b", nil},  // unparseable
+	} {
+		got := parseRational(tc.in)
+		switch {
+		case tc.want == nil && got != nil:
+			t.Errorf("parseRational(%q) = %v, want nil", tc.in, *got)
+		case tc.want != nil && got == nil:
+			t.Errorf("parseRational(%q) = nil, want %v", tc.in, *tc.want)
+		case tc.want != nil && *got != *tc.want:
+			t.Errorf("parseRational(%q) = %v, want %v", tc.in, *got, *tc.want)
+		}
+	}
+}
+
+func ptr[T any](v T) *T { return &v }
 
 func TestParseProbeOutputInvalidJSON(t *testing.T) {
 	if _, err := parseProbeOutput([]byte("not json")); err == nil {

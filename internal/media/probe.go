@@ -23,10 +23,14 @@ type ProbeResult struct {
 
 // ProbeStream is one track within a container.
 //
-// Width and Height are video-only, Channels audio-only. Language and
-// disposition are parsed by ffprobe but deliberately not carried here: the
-// media_streams schema has no column for them, and inventing fields the
-// database cannot store would be a lie about what Reelix knows.
+// Width, Height, Profile, Level, PixelFormat and the two frame rates are
+// video-only in practice; Channels is audio-only. ffprobe reports the whole
+// set for every stream and leaves the inapplicable ones absent, so a nil here
+// means ffprobe said nothing rather than that Reelix declined to look.
+//
+// Language is whatever the container's tag says, including the literal "und".
+// Normalising that away would discard the difference between a track tagged
+// undefined and a track with no tag at all.
 type ProbeStream struct {
 	Index    int
 	Kind     string
@@ -35,6 +39,26 @@ type ProbeStream struct {
 	Height   *int
 	Channels *int
 	BitRate  *int64
+
+	Language    *string
+	Title       *string
+	Profile     *string
+	Level       *int
+	PixelFormat *string
+
+	// Both rates are carried because ffprobe reports two different things:
+	// r_frame_rate is the container's base rate and avg_frame_rate the
+	// measured average. They agree on constant-frame-rate content and
+	// diverge on variable, so deriving one from the other would be a guess
+	// made at write time that cannot be undone later.
+	AverageFrameRate *float64
+	RealFrameRate    *float64
+
+	// Dispositions are booleans rather than pointers: ffprobe always reports
+	// the object, so "not flagged" is an answer rather than an absence.
+	IsDefault         bool
+	IsForced          bool
+	IsHearingImpaired bool
 }
 
 // Prober runs ffprobe against media files.
@@ -119,6 +143,29 @@ type ffprobeOutput struct {
 		Height    int    `json:"height"`
 		Channels  int    `json:"channels"`
 		BitRate   string `json:"bit_rate"`
+
+		// Already present in the -show_streams output this package has
+		// always asked for; until 0.0.2 they were simply not declared, so
+		// the decoder discarded them. The ffprobe invocation is unchanged.
+		Profile     string `json:"profile"`
+		Level       int    `json:"level"`
+		PixelFormat string `json:"pix_fmt"`
+
+		// Rationals, as strings: "24000/1001", or "0/0" when there is none.
+		AvgFrameRate  string `json:"avg_frame_rate"`
+		RealFrameRate string `json:"r_frame_rate"`
+
+		Tags struct {
+			Language string `json:"language"`
+			Title    string `json:"title"`
+		} `json:"tags"`
+
+		// ffprobe renders these as 0/1 rather than as JSON booleans.
+		Disposition struct {
+			Default         int `json:"default"`
+			Forced          int `json:"forced"`
+			HearingImpaired int `json:"hearing_impaired"`
+		} `json:"disposition"`
 	} `json:"streams"`
 }
 
@@ -170,10 +217,63 @@ func parseProbeOutput(raw []byte) (ProbeResult, error) {
 			stream.BitRate = &b
 		}
 
+		stream.Language = nonEmptyPtr(s.Tags.Language)
+		stream.Title = nonEmptyPtr(s.Tags.Title)
+		stream.Profile = nonEmptyPtr(s.Profile)
+		stream.PixelFormat = nonEmptyPtr(s.PixelFormat)
+
+		// ffprobe writes -99 for "unknown" and 0 on streams that have no
+		// concept of a level. Both become nil: a number stored for either
+		// would read downstream as a measurement.
+		if s.Level > 0 {
+			level := s.Level
+			stream.Level = &level
+		}
+
+		stream.AverageFrameRate = parseRational(s.AvgFrameRate)
+		stream.RealFrameRate = parseRational(s.RealFrameRate)
+
+		stream.IsDefault = s.Disposition.Default == 1
+		stream.IsForced = s.Disposition.Forced == 1
+		stream.IsHearingImpaired = s.Disposition.HearingImpaired == 1
+
 		result.Streams = append(result.Streams, stream)
 	}
 
 	return result, nil
+}
+
+// nonEmptyPtr maps "" to nil, so an absent tag is null rather than an empty
+// string that reads as a track deliberately named nothing.
+func nonEmptyPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+// parseRational converts one of ffprobe's "24000/1001" frame rates.
+//
+// Returns nil for the "0/0" ffprobe emits on streams with no frame rate, for a
+// zero numerator, and for anything unparseable — each of which means the same
+// thing to a caller, and none of which is 0 fps.
+func parseRational(s string) *float64 {
+	num, den, found := strings.Cut(s, "/")
+	if !found {
+		return nil
+	}
+
+	n, err := strconv.ParseFloat(num, 64)
+	if err != nil || n <= 0 {
+		return nil
+	}
+	d, err := strconv.ParseFloat(den, 64)
+	if err != nil || d <= 0 {
+		return nil
+	}
+
+	rate := n / d
+	return &rate
 }
 
 // firstLine keeps an error message to a single line, so a multi-line ffprobe
