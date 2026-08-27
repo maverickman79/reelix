@@ -21,6 +21,123 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-27 — Step 6, second half: browse
+
+**Completed:**
+- `internal/repository/media.go`: `ListItems` — one lateral-join query
+  returning items with the file behind them and a subtitle flag, filtered by
+  library, ids and max year, sorted and paged, with a total count.
+  `CountItemsByLibrary` for a view's ChildCount.
+- `internal/service/media.go`: `MediaService` — `Views`, `Browse`, `Item`.
+  Owns sort defaults and the page cap; knows nothing about Jellyfin.
+- `internal/compat/jellyfin/itemdto.go`: the item, detail, media source,
+  media stream and view DTOs, and their translation.
+- `internal/compat/jellyfin/items.go`: `/UserViews`, `/Items`, `/Items/{id}`,
+  `/Items/Latest` (now real data), `/Items/{id}/Images/*`, and the five
+  sub-routes a detail screen polls — `/Intros`, `/Similar`,
+  `/SpecialFeatures`, `/ThemeSongs`, `/MediaSegments/{id}`.
+- `fixture_test.go` gained the three rules below.
+
+**Verified:**
+- `gofmt`, `go vet ./...` clean. 486 tests pass with a database; without
+  `REELIX_TEST_DB_DSN` everything skips cleanly and nothing fails.
+- Every recorded `/UserViews`, `/Items`, `/Items/{id}`, `/Items/Latest` and
+  sub-route call passes the superset comparison. The recorded queries name the
+  reference server's ids, so a parentId is rewritten to the seeded library and
+  an `ids=` lookup to a seeded item — but only where the recording returned
+  movies. Six recordings resolved person ids and returned cast lists; people
+  are excluded from 0.0.1, so those stay pointed at ids Reelix does not hold
+  and are satisfied by an empty result.
+- **The three new comparison rules were fault-injected**, and each proved it
+  still fails what it should: an incomplete audio stream, an incomplete video
+  stream, a stream of a type the recording never carried, a null tag map, a
+  null where no allowance covers it, a video stream borrowing the subtitle
+  allowance, and a key missing rather than null.
+- **Live run against the real scanned library** (its rows copied into a
+  scratch database; nothing written to the running stack): `/UserViews`
+  returns Movies with ChildCount 6; `/Items` returns all six films with real
+  durations and normalised containers; Fight Club's detail carries 56 fields,
+  63 streams, Size 76065184023 and a derived Bitrate of 72.9 Mbit/s. Dashed
+  and dashless ids both resolve, an unknown id is 404, a library id resolves
+  to its view, images are 404, and the log holds no errors.
+
+**In flight:**
+- Nothing.
+
+**Blocked:**
+- Nothing.
+
+**Next step:**
+- Step 7: `POST /Items/{id}/PlaybackInfo` returning a direct-play decision,
+  the static stream endpoint via `http.ServeContent` with correct range
+  handling, and playback session logging. Both routes 404 today.
+
+**Decisions made:**
+- **A field Reelix cannot fill is null, never a fabricated value.** 0.0.1
+  excludes metadata scraping and artwork, so ratings, overviews, release dates
+  and image tags are genuinely unknown. A CommunityRating of 0 renders as a
+  zero-star rating and a PremiereDate of 0001-01-01 as year 1; null is exactly
+  what Jellyfin reports for an unscraped library.
+- **Enum-valued fields are the exception and always carry a valid member.**
+  "Unknown", "None", "FileSystem", and `TranscodingSubProtocol: "http"` even
+  though Reelix does not transcode. Null or "" where the SDK expects an enum
+  is a deserialization exception rather than an empty screen.
+- **Three changes to the fixture comparison**, each narrow and each named:
+  - `dataObjects` — objects whose KEYS are data (ImageTags by image id,
+    ImageBlurHashes by hash, ProviderIds by provider). Requiring those keys
+    would require inventing an image id Reelix would then 404 on. The value
+    must still be an object.
+  - Arrays of typed objects are matched **by Type**. This is a bug fix, not a
+    loosening: checking an audio stream against the recorded video stream at
+    index 0 failed it for missing Width and Profile. Step 7 would have hit it
+    regardless. The path now carries the type — `MediaStreams[1:Audio]` — so
+    failures name the kind of stream and an allowance can be scoped to one.
+  - `absentInReelix` — leaf fields answered with null because 0.0.1 excludes
+    the subsystem that would fill them. **Every entry states why, enforced at
+    init**: `because("")` panics the test binary. An allowance covers null
+    only; a key that is missing rather than null still fails, which is the
+    distinction the helper exists to catch.
+- **`SupportsTranscoding` is false**, unlike the reference. Reelix cannot
+  transcode in 0.0.1, and advertising a capability it would fail to deliver is
+  worse than declining it — the client falls back to direct play, which works.
+- **Container is normalised `matroska,webm` → `mkv`.** ffprobe reports the raw
+  format name; the reference server reported "mkv" for exactly those files
+  while leaving an mp4's "mov,mp4,m4a,3gp,3g2,mj2" untouched. The asymmetry is
+  copied deliberately: the client matches this string against its direct-play
+  profile, so it must be the string the client expects. This matters in
+  Step 7.
+- **`Path` is empty**, on the item and on the media source, as Step 5 did for
+  `/System/Info`. The source's `Name` carries the bare filename, which is
+  release information rather than filesystem layout.
+- **A library id resolves to its view rather than 404.** Jellyfin models a
+  library as a CollectionFolder, so a client following a view's id into
+  `/Items/{id}` gets the view. A genuinely unknown id is still 404, which is
+  Jellyfin's own answer and what the client's model expects.
+- **Sorts with no data behind them fall back to title order.** Wholphin asks
+  for CommunityRating and DatePlayed; there is no metadata and no playback
+  history. A row in an unexpected order is a cosmetic surprise, where an error
+  is a blank screen. `isPlayed=true` returns empty for the same reason, and
+  `includeItemTypes=Episode` returns empty because series libraries are
+  excluded.
+- `maxPremiereDate` is applied against the release year, since that is all the
+  filename parser knows. Coarser than the client asked for, but it keeps
+  unreleased titles out of the row, which is the point of the filter.
+- The media source's overall Bitrate is derived from size over duration —
+  arithmetic on two stored values, not a probe and not a guess.
+- Items with no file still list. A scan interrupted between writing the item
+  and writing its file produces exactly that, and a browse must not lose the
+  item or fail; the repository test covers it, and it caught a real bug in the
+  join (every file column must be scanned through a pointer, including the
+  ones the schema declares NOT NULL).
+
+**Known limitation — stream metadata, for 0.0.2:**
+The scanner stores index, kind, codec, dimensions, channels and bitrate.
+Language, track title, profile, frame rate, pixel format and colour metadata
+are not recorded, so they are null and every `(0.0.2)` entry in the allowance
+list is this one gap. The visible cost: Fight Club's 57 subtitle tracks render
+as unlabelled entries. Fixing it means extending the probe, a migration and a
+re-scan — Step 4 territory, not a gate failure.
+
 ## 2026-08-27 — Step 6, first half: the socket and the polled routes
 
 **Completed:**
