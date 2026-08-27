@@ -316,6 +316,10 @@ func TestStdlibUUIDRoundTrip(t *testing.T) {
 
 // TestStreamMetadataMigrationClearsProbedAt pins the re-probe trigger.
 //
+// Any migration that adds a stream column has to clear probed_at, because the
+// column is empty for every existing row and nothing on disk changes to say
+// so. This checks the most recent one that does.
+//
 // Migration 6 adds columns that are empty for every row already in the table,
 // and nothing on disk changes to announce that: neither size nor mtime moves,
 // so the scanner's ordinary change detection would never re-probe. Clearing
@@ -334,7 +338,10 @@ func TestStreamMetadataMigrationClearsProbedAt(t *testing.T) {
 		t.Fatalf("loadMigrations: %v", err)
 	}
 
-	const streamMetadataVersion = 6
+	// Both 6 and 7 added stream columns and cleared probed_at. The test
+	// tracks the latest such migration rather than a fixed number, so a
+	// third one that forgets the UPDATE is caught rather than skipped.
+	const streamMetadataVersion = 7
 
 	var upTo, streamMetadata []Migration
 	for _, m := range migrations {

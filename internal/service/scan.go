@@ -340,6 +340,9 @@ func (s *ScanService) persistFile(
 				IsDefault:         ps.IsDefault,
 				IsForced:          ps.IsForced,
 				IsHearingImpaired: ps.IsHearingImpaired,
+
+				ChannelLayout: ps.ChannelLayout,
+				SampleRate:    ps.SampleRate,
 			})
 		}
 		return tx.ReplaceStreams(ctx, file.ID, streams)

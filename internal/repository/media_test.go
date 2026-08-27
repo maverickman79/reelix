@@ -718,6 +718,9 @@ func TestStreamMetadataRoundTrip(t *testing.T) {
 			StreamIndex: 1, Kind: domain.StreamKindAudio, Codec: ptr("dts"),
 			Channels: ptr(6), Language: ptr("eng"), Title: ptr("DTS-HD MA 5.1"),
 			Profile: ptr("DTS-HD MA"), IsDefault: true,
+			// Stored with the qualifier: the database keeps what ffprobe
+			// said, and the compatibility layer strips it.
+			ChannelLayout: ptr("5.1(side)"), SampleRate: ptr(48000),
 		},
 		{
 			StreamIndex: 2, Kind: domain.StreamKindSubtitle, Codec: ptr("subrip"),
@@ -749,6 +752,8 @@ func TestStreamMetadataRoundTrip(t *testing.T) {
 		eqStr(t, i, "title", w.Title, g.Title)
 		eqStr(t, i, "profile", w.Profile, g.Profile)
 		eqStr(t, i, "pixel_format", w.PixelFormat, g.PixelFormat)
+		eqStr(t, i, "channel_layout", w.ChannelLayout, g.ChannelLayout)
+		eqInt(t, i, "sample_rate", w.SampleRate, g.SampleRate)
 		eqInt(t, i, "level", w.Level, g.Level)
 		eqFloat(t, i, "avg_frame_rate", w.AverageFrameRate, g.AverageFrameRate)
 		eqFloat(t, i, "real_frame_rate", w.RealFrameRate, g.RealFrameRate)
@@ -770,7 +775,8 @@ func TestStreamMetadataRoundTrip(t *testing.T) {
 	blank := got[3]
 	if blank.Language != nil || blank.Title != nil || blank.Profile != nil ||
 		blank.Level != nil || blank.PixelFormat != nil ||
-		blank.AverageFrameRate != nil || blank.RealFrameRate != nil {
+		blank.AverageFrameRate != nil || blank.RealFrameRate != nil ||
+		blank.ChannelLayout != nil || blank.SampleRate != nil {
 		t.Errorf("an untagged track came back with values: %+v", blank)
 	}
 	if blank.IsDefault || blank.IsForced || blank.IsHearingImpaired {

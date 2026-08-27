@@ -57,7 +57,8 @@ func (f *fakeProber) Probe(_ context.Context, path string) (media.ProbeResult, e
 	bitRate := int64(8_000_000)
 	eng, profile, pixFmt := "eng", "High", "yuv420p"
 	audioTitle, subTitle := "Surround AC3 5.1", "SDH"
-	level := 40
+	layout := "5.1(side)"
+	level, sampleRate := 40, 48000
 	frameRate := 23.976023976023978
 
 	// Metadata on every kind of stream, with the three dispositions set
@@ -77,6 +78,7 @@ func (f *fakeProber) Probe(_ context.Context, path string) (media.ProbeResult, e
 			{
 				Index: 1, Kind: "audio", Codec: "ac3", Channels: &channels,
 				Language: &eng, Title: &audioTitle, IsDefault: true,
+				ChannelLayout: &layout, SampleRate: &sampleRate,
 			},
 			{
 				Index: 2, Kind: "subtitle", Codec: "subrip",
@@ -681,6 +683,14 @@ func TestScanPersistsStreamMetadata(t *testing.T) {
 	}
 	if subtitle.Title == nil || *subtitle.Title != "SDH" {
 		t.Errorf("subtitle title = %v, want SDH", subtitle.Title)
+	}
+	// The qualifier must survive the scan; stripping it is the compat
+	// layer's job and doing it here would lose the container's own answer.
+	if audio.ChannelLayout == nil || *audio.ChannelLayout != "5.1(side)" {
+		t.Errorf("audio channel layout = %v, want \"5.1(side)\"", audio.ChannelLayout)
+	}
+	if audio.SampleRate == nil || *audio.SampleRate != 48000 {
+		t.Errorf("audio sample rate = %v, want 48000", audio.SampleRate)
 	}
 
 	// The dispositions differ per stream on purpose: this fails if the

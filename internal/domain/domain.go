@@ -236,6 +236,12 @@ type MediaStream struct {
 	Level       *int
 	PixelFormat *string
 
+	// Audio-only, and stored as ffprobe reported it — "5.1(side)" keeps its
+	// qualifier. Rendering it for a client is presentation and happens at the
+	// compatibility boundary.
+	ChannelLayout *string
+	SampleRate    *int
+
 	AverageFrameRate *float64
 	RealFrameRate    *float64
 

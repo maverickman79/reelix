@@ -30,7 +30,8 @@ const (
 	streamColumns = `id, media_file_id, stream_index, kind, codec, width, height,
 	                 channels, bit_rate, language, title, profile, level,
 	                 pixel_format, avg_frame_rate, real_frame_rate,
-	                 is_default, is_forced, is_hearing_impaired`
+	                 is_default, is_forced, is_hearing_impaired,
+	                 channel_layout, sample_rate`
 )
 
 // CreateItem inserts a media item, assigning its id and timestamps.
@@ -202,9 +203,10 @@ func (r *MediaRepository) ReplaceStreams(ctx context.Context, fileID uuid.UUID, 
 		                           width, height, channels, bit_rate,
 		                           language, title, profile, level, pixel_format,
 		                           avg_frame_rate, real_frame_rate,
-		                           is_default, is_forced, is_hearing_impaired)
+		                           is_default, is_forced, is_hearing_impaired,
+		                           channel_layout, sample_rate)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-		        $15, $16, $17, $18, $19)`
+		        $15, $16, $17, $18, $19, $20, $21)`
 
 	for i := range streams {
 		s := &streams[i]
@@ -215,7 +217,8 @@ func (r *MediaRepository) ReplaceStreams(ctx context.Context, fileID uuid.UUID, 
 			s.Codec, s.Width, s.Height, s.Channels, s.BitRate,
 			s.Language, s.Title, s.Profile, s.Level, s.PixelFormat,
 			s.AverageFrameRate, s.RealFrameRate,
-			s.IsDefault, s.IsForced, s.IsHearingImpaired); err != nil {
+			s.IsDefault, s.IsForced, s.IsHearingImpaired,
+			s.ChannelLayout, s.SampleRate); err != nil {
 			return mapError("replacing media streams", err)
 		}
 	}
@@ -240,7 +243,8 @@ func (r *MediaRepository) ListStreams(ctx context.Context, fileID uuid.UUID) ([]
 			&s.Width, &s.Height, &s.Channels, &s.BitRate,
 			&s.Language, &s.Title, &s.Profile, &s.Level, &s.PixelFormat,
 			&s.AverageFrameRate, &s.RealFrameRate,
-			&s.IsDefault, &s.IsForced, &s.IsHearingImpaired); err != nil {
+			&s.IsDefault, &s.IsForced, &s.IsHearingImpaired,
+			&s.ChannelLayout, &s.SampleRate); err != nil {
 			return nil, mapError("listing media streams", err)
 		}
 		out = append(out, s)
