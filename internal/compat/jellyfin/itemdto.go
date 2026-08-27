@@ -196,10 +196,8 @@ type mediaSourceDTO struct {
 //
 // One shape serves video, audio and subtitle streams; the recorded server
 // emitted a different key set per type, and a field that does not apply is
-// null. Most of these are null for Reelix: the scanner stores index, kind,
-// codec, dimensions, channels and bitrate, and nothing else. Extending the
-// probe to carry language, profile and frame rate is a 0.0.2 change — it
-// needs a migration and a re-scan.
+// null. What remains null here is what the scanner still does not probe —
+// colour metadata, sample rate, and the container-level detail below it.
 type mediaStreamDTO struct {
 	Index   int     `json:"Index"`
 	Type    string  `json:"Type"`
@@ -216,8 +214,9 @@ type mediaStreamDTO struct {
 	AspectRatio  *string `json:"AspectRatio"`
 	DisplayTitle string  `json:"DisplayTitle"`
 
-	// The track's own name, where the container carries one. The scanner
-	// does not read it yet, so a client sees the composed DisplayTitle only.
+	// The track's own name, where the container carries one: "SDH",
+	// "Commentary", "Latin American". Null for a track the container did not
+	// name, which is most video streams.
 	Title *string `json:"Title"`
 
 	// Enum members, never null. See the file comment.
@@ -225,38 +224,47 @@ type mediaStreamDTO struct {
 	VideoRangeType     string `json:"VideoRangeType"`
 	AudioSpatialFormat string `json:"AudioSpatialFormat"`
 
-	// Flags Reelix does not probe. False means "not flagged", which is what a
-	// container without the flag set actually means; IsExternal is genuinely
-	// false, since every stream Reelix knows about is inside the file.
+	// Dispositions. The first three come from the container; IsInterlaced is
+	// not probed and IsExternal is genuinely false, since every stream Reelix
+	// knows about is inside the file.
 	IsDefault              bool `json:"IsDefault"`
 	IsForced               bool `json:"IsForced"`
-	IsExternal             bool `json:"IsExternal"`
 	IsHearingImpaired      bool `json:"IsHearingImpaired"`
+	IsExternal             bool `json:"IsExternal"`
 	IsInterlaced           bool `json:"IsInterlaced"`
 	IsTextSubtitleStream   bool `json:"IsTextSubtitleStream"`
 	SupportsExternalStream bool `json:"SupportsExternalStream"`
 
+	// Probed codec detail. Level, Profile and PixelFormat are video-only in
+	// practice; ffprobe reports no level for audio or subtitle streams and
+	// its -99 sentinel is mapped to null well before here.
+	Level       *float64 `json:"Level"`
+	Profile     *string  `json:"Profile"`
+	PixelFormat *string  `json:"PixelFormat"`
+
+	// Two measured rates. ReferenceFrameRate stays null: the captures show
+	// it equal to both of the others, but what the reference server means by
+	// it is not something the traffic reveals, and a value that happens to
+	// be right for constant-frame-rate content is still a guess.
+	AverageFrameRate   *float64 `json:"AverageFrameRate"`
+	RealFrameRate      *float64 `json:"RealFrameRate"`
+	ReferenceFrameRate *float64 `json:"ReferenceFrameRate"`
+
 	// Unprobed detail.
-	IsAVC                    *bool    `json:"IsAVC"`
-	IsAnamorphic             *bool    `json:"IsAnamorphic"`
-	BitDepth                 *int     `json:"BitDepth"`
-	Level                    *float64 `json:"Level"`
-	Profile                  *string  `json:"Profile"`
-	PixelFormat              *string  `json:"PixelFormat"`
-	RefFrames                *int     `json:"RefFrames"`
-	NalLengthSize            *string  `json:"NalLengthSize"`
-	TimeBase                 *string  `json:"TimeBase"`
-	AverageFrameRate         *float64 `json:"AverageFrameRate"`
-	RealFrameRate            *float64 `json:"RealFrameRate"`
-	ReferenceFrameRate       *float64 `json:"ReferenceFrameRate"`
-	ColorSpace               *string  `json:"ColorSpace"`
-	ColorTransfer            *string  `json:"ColorTransfer"`
-	ColorPrimaries           *string  `json:"ColorPrimaries"`
-	LocalizedDefault         *string  `json:"LocalizedDefault"`
-	LocalizedExternal        *string  `json:"LocalizedExternal"`
-	LocalizedForced          *string  `json:"LocalizedForced"`
-	LocalizedHearingImpaired *string  `json:"LocalizedHearingImpaired"`
-	LocalizedUndefined       *string  `json:"LocalizedUndefined"`
+	IsAVC                    *bool   `json:"IsAVC"`
+	IsAnamorphic             *bool   `json:"IsAnamorphic"`
+	BitDepth                 *int    `json:"BitDepth"`
+	RefFrames                *int    `json:"RefFrames"`
+	NalLengthSize            *string `json:"NalLengthSize"`
+	TimeBase                 *string `json:"TimeBase"`
+	ColorSpace               *string `json:"ColorSpace"`
+	ColorTransfer            *string `json:"ColorTransfer"`
+	ColorPrimaries           *string `json:"ColorPrimaries"`
+	LocalizedDefault         *string `json:"LocalizedDefault"`
+	LocalizedExternal        *string `json:"LocalizedExternal"`
+	LocalizedForced          *string `json:"LocalizedForced"`
+	LocalizedHearingImpaired *string `json:"LocalizedHearingImpaired"`
+	LocalizedUndefined       *string `json:"LocalizedUndefined"`
 }
 
 // viewDTO is a library presented as something to browse.
@@ -523,6 +531,26 @@ func newStreamDTOs(streams []domain.MediaStream) []mediaStreamDTO {
 			Height:   s.Height,
 			BitRate:  s.BitRate,
 			Channels: s.Channels,
+
+			// Probed metadata, passed through as stored. Language is the raw
+			// ISO 639 code the container carried, which is what the recorded
+			// server sent; the English name it also composed lives only in
+			// DisplayTitle.
+			Language:         s.Language,
+			Title:            s.Title,
+			Profile:          s.Profile,
+			Level:            level(s.Level),
+			PixelFormat:      s.PixelFormat,
+			AverageFrameRate: s.AverageFrameRate,
+			RealFrameRate:    s.RealFrameRate,
+
+			// Dispositions as the container set them. Until 0.0.2 these were
+			// hardcoded false, which the fixture comparison could not catch:
+			// false is the same JSON type as true.
+			IsDefault:         s.IsDefault,
+			IsForced:          s.IsForced,
+			IsHearingImpaired: s.IsHearingImpaired,
+
 			// Enum members rather than null; the honest answer is that the
 			// scanner does not read colour metadata.
 			VideoRange:         "Unknown",
@@ -566,6 +594,16 @@ func secondsToTicks(seconds float64) int64 {
 		return 0
 	}
 	return int64(seconds * ticksPerSecond)
+}
+
+// level widens a stored codec level for the DTO, which types it as a number
+// because the recorded server sent 40 for H.264 level 4.0.
+func level(v *int) *float64 {
+	if v == nil {
+		return nil
+	}
+	f := float64(*v)
+	return &f
 }
 
 // videoStream returns the first video stream, or nil.
@@ -666,53 +704,6 @@ func gcd(a, b int) int {
 		return 1
 	}
 	return a
-}
-
-// displayTitle is the label a client shows when a user picks a track.
-//
-// Composed from what Reelix actually probed. Jellyfin's own titles carry the
-// language and profile as well; those are not stored yet, so a track reads
-// "1080p H264" or "EAC3 5.1" rather than naming a language it does not know.
-func displayTitle(s domain.MediaStream) string {
-	codec := ""
-	if s.Codec != nil {
-		codec = strings.ToUpper(*s.Codec)
-	}
-
-	switch s.Kind {
-	case domain.StreamKindVideo:
-		if s.Height != nil {
-			if codec == "" {
-				return fmt.Sprintf("%dp", *s.Height)
-			}
-			return fmt.Sprintf("%dp %s", *s.Height, codec)
-		}
-	case domain.StreamKindAudio:
-		if s.Channels != nil {
-			layout := channelLayout(*s.Channels)
-			if codec == "" {
-				return layout
-			}
-			return codec + " " + layout
-		}
-	}
-	return codec
-}
-
-// channelLayout names a channel count the way a listener would.
-func channelLayout(channels int) string {
-	switch channels {
-	case 1:
-		return "Mono"
-	case 2:
-		return "Stereo"
-	case 6:
-		return "5.1"
-	case 8:
-		return "7.1"
-	default:
-		return fmt.Sprintf("%d ch", channels)
-	}
 }
 
 // etagOf builds a cache tag from an item's identity and its last change.

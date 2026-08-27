@@ -401,7 +401,11 @@ func TestItemDetailCarriesThePlayableFile(t *testing.T) {
 		t.Errorf("video VideoRange = %q, want the Unknown member", video.VideoRange)
 	}
 
-	if audio := got.MediaStreams[1]; audio.Type != "Audio" || audio.DisplayTitle != "EAC3 5.1" {
+	// The codec renders as the name the recorded server used rather than as
+	// ffprobe's identifier. This stream carries no language tag, so the
+	// label says nothing about one.
+	if audio := got.MediaStreams[1]; audio.Type != "Audio" ||
+		audio.DisplayTitle != "Dolby Digital+ - 5.1" {
 		t.Errorf("second stream = %+v, want the audio", audio)
 	}
 	if sub := got.MediaStreams[2]; sub.Type != "Subtitle" || !sub.IsTextSubtitleStream {
