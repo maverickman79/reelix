@@ -103,6 +103,30 @@ type ServerSettings struct {
 	ServerName string
 }
 
+// PlaybackState is one user's progress through one media item.
+//
+// PositionSeconds is where playback should resume, already judged against the
+// resume thresholds: zero means the item is not in progress. RawPositionSeconds
+// is what the client last reported, kept unjudged so that changing those
+// thresholds later reinterprets history rather than discarding it.
+type PlaybackState struct {
+	UserID      uuid.UUID
+	MediaItemID uuid.UUID
+
+	PositionSeconds    float64
+	RawPositionSeconds float64
+
+	Played    bool
+	PlayCount int
+
+	LastPlayedAt *time.Time
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+// InProgress reports whether the item belongs in a resume list.
+func (p PlaybackState) InProgress() bool { return p.PositionSeconds > 0 }
+
 // Session is a client session bound to a device.
 //
 // This is the native record. The Jellyfin SessionInfo DTO is assembled from it

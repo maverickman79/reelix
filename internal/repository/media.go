@@ -255,10 +255,11 @@ func scanFile(row interface{ Scan(...any) error }, op string) (domain.MediaFile,
 type ItemSort string
 
 const (
-	ItemSortTitle     ItemSort = "title"
-	ItemSortCreatedAt ItemSort = "created_at"
-	ItemSortYear      ItemSort = "year"
-	ItemSortRandom    ItemSort = "random"
+	ItemSortTitle      ItemSort = "title"
+	ItemSortCreatedAt  ItemSort = "created_at"
+	ItemSortYear       ItemSort = "year"
+	ItemSortRandom     ItemSort = "random"
+	ItemSortLastPlayed ItemSort = "last_played"
 )
 
 // ItemQuery selects, orders, and pages media items.
@@ -273,6 +274,22 @@ type ItemQuery struct {
 	// MaxYear excludes items released after it. Clients use this to keep
 	// unreleased titles out of a browse row.
 	MaxYear *int
+
+	// UserID selects whose playback state travels with the items. A zero
+	// value matches no user, so every item comes back with zeroed state —
+	// which is the right answer for a caller that has no user in hand.
+	UserID uuid.UUID
+
+	// InProgressOnly restricts the answer to items with a resume position,
+	// which is what a Continue Watching row is.
+	InProgressOnly bool
+
+	// ExcludePlayed drops items the user has finished. The latest-items row
+	// uses it, because Reelix tells clients it hides played items there.
+	ExcludePlayed bool
+
+	// PlayedOnly keeps only items the user has finished.
+	PlayedOnly bool
 
 	Sort       ItemSort
 	Descending bool
@@ -297,7 +314,21 @@ type ItemWithFile struct {
 	// HasSubtitles reports whether the file carries at least one subtitle
 	// stream. Computed in SQL rather than by loading every stream.
 	HasSubtitles bool
+
+	// State is the requesting user's progress through this item, zero when
+	// the query named no user or the user has never played it. Joined here
+	// rather than fetched per item: a browse response carries it for every
+	// row, and that is an N+1 waiting to happen.
+	State domain.PlaybackState
 }
+
+// playbackJoin attaches one user's playback state to each item.
+//
+// $1 is always the user id. A zero uuid matches no row, so a query with no
+// user in hand still runs and every item comes back with zeroed state.
+const playbackJoin = `
+	LEFT JOIN playback_state ps
+	       ON ps.media_item_id = m.id AND ps.user_id = $1`
 
 // ListItems returns the items matching q, and the total number of matches
 // ignoring Offset and Limit.
@@ -322,7 +353,9 @@ func (r *MediaRepository) ListItems(ctx context.Context, q ItemQuery) ([]ItemWit
 		SELECT ` + prefixed("m", itemColumns) + `,
 		       f.id, f.media_item_id, f.path, f.filename, f.size_bytes,
 		       f.container, f.duration_seconds, f.probed_at, f.created_at, f.updated_at,
-		       COALESCE(f.has_subtitles, false)
+		       COALESCE(f.has_subtitles, false),
+		       COALESCE(ps.position_seconds, 0), COALESCE(ps.raw_position_seconds, 0),
+		       COALESCE(ps.played, false), COALESCE(ps.play_count, 0), ps.last_played_at
 		FROM media_items m
 		LEFT JOIN LATERAL (
 			SELECT mf.*,
@@ -334,7 +367,7 @@ func (r *MediaRepository) ListItems(ctx context.Context, q ItemQuery) ([]ItemWit
 			WHERE mf.media_item_id = m.id
 			ORDER BY mf.id
 			LIMIT 1
-		) f ON true` +
+		) f ON true` + playbackJoin +
 		whereClause(where) + orderClause(q)
 
 	if q.Limit > 0 {
@@ -377,10 +410,18 @@ func (r *MediaRepository) ListItems(ctx context.Context, q ItemQuery) ([]ItemWit
 			&it.Item.Year, &it.Item.SourcePath, &it.Item.CreatedAt, &it.Item.UpdatedAt,
 			&fileID, &mediaItemID, &path, &filename, &size,
 			&container, &duration, &probedAt, &createdAt, &updatedAt,
-			&it.HasSubtitles)
+			&it.HasSubtitles,
+			&it.State.PositionSeconds, &it.State.RawPositionSeconds,
+			&it.State.Played, &it.State.PlayCount, &it.State.LastPlayedAt)
 		if err != nil {
 			return nil, 0, mapError("listing items", err)
 		}
+
+		// The state is this user's, for this item, by construction. An item
+		// the user has never played joins to nothing and arrives zeroed,
+		// which says the same thing as a row full of zeroes.
+		it.State.UserID = q.UserID
+		it.State.MediaItemID = it.Item.ID
 
 		if fileID != nil {
 			it.File = &domain.MediaFile{
@@ -413,11 +454,36 @@ func derefOr[T any](v *T, fallback T) T {
 func (r *MediaRepository) countItems(ctx context.Context, where []string, args []any) (int, error) {
 	var total int
 	err := r.q.QueryRow(ctx,
-		`SELECT count(*) FROM media_items m`+whereClause(where), args...).Scan(&total)
+		`SELECT count(*) FROM media_items m`+playbackJoin+whereClause(where), args...).Scan(&total)
 	if err != nil {
 		return 0, mapError("counting items", err)
 	}
 	return total, nil
+}
+
+// ItemRuntime returns the runtime of the file behind an item, or ErrNotFound
+// when no such item exists.
+//
+// One round trip, because a progress report asks this every few seconds and
+// needs nothing else. A nil result means the item exists but its file has not
+// been probed.
+func (r *MediaRepository) ItemRuntime(ctx context.Context, itemID uuid.UUID) (*float64, error) {
+	const q = `
+		SELECT (
+			SELECT mf.duration_seconds
+			FROM media_files mf
+			WHERE mf.media_item_id = m.id
+			ORDER BY mf.id
+			LIMIT 1
+		)
+		FROM media_items m
+		WHERE m.id = $1`
+
+	var runtime *float64
+	if err := r.q.QueryRow(ctx, q, itemID).Scan(&runtime); err != nil {
+		return nil, mapError("getting item runtime", err)
+	}
+	return runtime, nil
 }
 
 // CountItemsByLibrary returns the number of items in each of the given
@@ -454,10 +520,13 @@ func (r *MediaRepository) CountItemsByLibrary(ctx context.Context, libraryIDs []
 }
 
 // itemFilters builds the WHERE fragments and their arguments.
+//
+// The user id is always $1, whether or not the query filters on playback
+// state, so that the join above can be a constant.
 func itemFilters(q ItemQuery) ([]string, []any) {
 	var (
 		where []string
-		args  []any
+		args  = []any{q.UserID}
 	)
 
 	add := func(fragment string, arg any) {
@@ -475,6 +544,18 @@ func itemFilters(q ItemQuery) ([]string, []any) {
 		// Items with no year are kept: an unknown release date is not
 		// evidence that the item is unreleased.
 		add("(m.year IS NULL OR m.year <= $%d)", *q.MaxYear)
+	}
+
+	if q.InProgressOnly {
+		where = append(where, "ps.position_seconds > 0")
+	}
+	if q.ExcludePlayed {
+		// An item the user has never touched has no row at all, and has
+		// certainly not been played.
+		where = append(where, "COALESCE(ps.played, false) = false")
+	}
+	if q.PlayedOnly {
+		where = append(where, "COALESCE(ps.played, false) = true")
 	}
 	return where, args
 }
@@ -504,6 +585,8 @@ func orderClause(q ItemQuery) string {
 		column = "m.created_at"
 	case ItemSortYear:
 		column = "m.year"
+	case ItemSortLastPlayed:
+		column = "ps.last_played_at"
 	}
 
 	direction := "ASC"
