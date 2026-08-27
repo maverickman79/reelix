@@ -37,12 +37,11 @@ var legacyPrefixes = []string{"emby", "mediabrowser"}
 //     404 on a real server and must stay one here.
 //   - a trailing slash is removed, which a real server tolerates.
 //
-// Case folding of the rest of the path is deliberately NOT done here. A real
-// server is case-insensitive across the whole surface and Reelix is not; that
-// gap is real and is being closed separately, because folding literal segments
-// while leaving path parameters untouched needs a route trie rather than a
-// string operation. Lowercasing the whole path would corrupt item ids and
-// container extensions.
+// Case folding happens AFTER this, in the trie; see routefold.go. The order is
+// load-bearing and was the actual cause of VidHub's 404: the stream extension
+// has to come off before the fold runs, because "stream.mkv" is not a literal
+// in any registered pattern and the trie cannot match it. Adding the fold
+// without fixing this function would have left that request broken.
 func normalizeLegacyPath(path string) string {
 	if path == "" || path == "/" {
 		return path
@@ -83,10 +82,16 @@ func normalizeLegacyPath(path string) string {
 // Done here rather than as a route pattern because net/http's mux requires a
 // wildcard to occupy a whole path segment, so "stream.{container}" cannot be
 // registered.
+// This runs BEFORE case folding and compares case-insensitively, which is
+// load-bearing rather than defensive. VidHub sends
+// /emby/videos/{id}/stream.mkv: a case-sensitive check here leaves the
+// extension attached, and the fold cannot rescue it either, because
+// "stream.mkv" is not a literal in any registered pattern. Folding alone
+// would have left that request a 404.
 func normalizeStreamSpelling(path string) string {
 	// Only under /Videos/{id}/. Audio streaming is not implemented, and a
 	// blanket rule would silently accept a route Reelix does not serve.
-	if !strings.HasPrefix(path, "/Videos/") {
+	if !strings.HasPrefix(strings.ToLower(path), "/videos/") {
 		return path
 	}
 
@@ -96,9 +101,12 @@ func normalizeStreamSpelling(path string) string {
 	}
 
 	name, ext, hasExt := strings.Cut(path[slash+1:], ".")
-	if !hasExt || name != "stream" || ext == "" || strings.Contains(ext, ".") {
+	if !hasExt || !strings.EqualFold(name, "stream") || ext == "" || strings.Contains(ext, ".") {
 		return path
 	}
+	// The canonical spelling; the fold would produce the same, and doing it
+	// here means the segment is already a known literal by the time it gets
+	// there.
 	return path[:slash+1] + "stream"
 }
 
@@ -131,9 +139,9 @@ func cutLegacyPrefix(path string) (string, bool) {
 // reconstructs a URL sees the canonical form. The original arrives in the
 // access log, which is where a question about what a client actually sent
 // gets answered.
-func withLegacyPaths(next http.Handler) http.Handler {
+func withLegacyPaths(trie *foldNode, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		normalized := normalizeLegacyPath(r.URL.Path)
+		normalized := trie.fold(normalizeLegacyPath(r.URL.Path))
 		if normalized == r.URL.Path {
 			next.ServeHTTP(w, r)
 			return
@@ -195,10 +203,23 @@ func (a *API) requireUserPath(next http.HandlerFunc) http.HandlerFunc {
 // userId is validated and then discarded: the handler reads the authenticated
 // user from the context, which requireUserPath has just proved is the same
 // person.
-func (a *API) registerUserScopedRoutes(mux *http.ServeMux) {
+func (a *API) registerUserScopedRoutes(mux *routeTable) {
 	scoped := func(pattern string, handler http.HandlerFunc) {
-		mux.HandleFunc(pattern, a.requireAuth(a.requireUserPath(handler)))
+		mux.handle(pattern, a.requireAuth(a.requireUserPath(handler)))
 	}
+
+	// The user object itself. A real server serves this; Reelix's own
+	// spelling is /Users/Me, which carries the user in the token.
+	//
+	// Not what blocks any client — VidHub reaches playback without it, and
+	// its AuthenticateByName response already carried the whole User object
+	// including Policy, so this is a refresh rather than an acquisition. It
+	// is here because it costs one line and otherwise leaves a recurring 404
+	// in a client's log for somebody to investigate later.
+	//
+	// It is also the literal-versus-parameter case the fold has to resolve:
+	// /Users/Public and /Users/Me must keep beating this pattern.
+	scoped("GET /Users/{userId}", a.handleUsersMe)
 
 	scoped("GET /Users/{userId}/Items", a.handleItems)
 	scoped("GET /Users/{userId}/Items/Resume", a.handleResumeItems)

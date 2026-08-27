@@ -328,3 +328,99 @@ func TestStreamWithContainerExtensionServesTheFile(t *testing.T) {
 		})
 	}
 }
+
+// TestVidHubStreamRequest is the literal request VidHub retries indefinitely:
+// lowercase "videos", the /emby prefix, and a container extension, all at once.
+//
+// It is a regression test for a PIPELINE ORDER bug as much as for case
+// folding. The extension has to come off before the fold runs, because
+// "stream.mkv" is not a literal in any registered pattern. Adding
+// case-insensitive matching without fixing normalizeStreamSpelling's own
+// case-sensitive guard would have left this request a 404 and looked like a
+// fix.
+func TestVidHubStreamRequest(t *testing.T) {
+	h := newHarness(t)
+	media := seedPlayable(t, h, recordedSize, map[int64]int{
+		recordedSeek: recordedMarkerLen,
+	})
+
+	// The query string is split off and reattached. Keeping it joined puts
+	// the container extension into the QUERY rather than the path, which
+	// silently turns every case below into a request for the bare /stream
+	// route — a test that passes without exercising anything.
+	canonicalPath, query, _ := strings.Cut(media.streamURL(), "?")
+	id := strings.TrimSuffix(strings.TrimPrefix(canonicalPath, "/Videos/"), "/stream")
+
+	// Every spelling that must reach the same bytes.
+	for _, tc := range []struct{ name, path string }{
+		{"lowercase videos with prefix and extension", "/emby/videos/%s/stream.mkv"},
+		{"lowercase videos, no prefix", "/videos/%s/stream.mkv"},
+		{"lowercase everything", "/emby/videos/%s/stream"},
+		{"uppercase path", "/EMBY/VIDEOS/%s/STREAM.MKV"},
+		{"mediabrowser prefix, lowercase", "/mediabrowser/videos/%s/stream.mkv"},
+		{"canonical", "/Videos/%s/stream"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := strings.Replace(tc.path, "%s", id, 1) + "?" + query
+
+			resp := h.getRange(t, path, fmt.Sprintf("bytes=%d-%d",
+				recordedSeek, recordedSeek+recordedMarkerLen-1))
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusPartialContent {
+				t.Fatalf("%s returned %d, want 206", path, resp.StatusCode)
+			}
+
+			wantRange := fmt.Sprintf("bytes %d-%d/%d",
+				recordedSeek, recordedSeek+recordedMarkerLen-1, recordedSize)
+			if got := resp.Header.Get("Content-Range"); got != wantRange {
+				t.Errorf("%s Content-Range = %q, want %q", path, got, wantRange)
+			}
+		})
+	}
+}
+
+// TestUserObjectRoute covers /Users/{userId}, and the precedence it depends
+// on: /Users/Me and /Users/Public are literals and must keep beating it.
+func TestUserObjectRoute(t *testing.T) {
+	h := newHarness(t)
+	token := h.login()
+	userID := h.userID(t, token)
+
+	me := h.bodyOf(h.do(http.MethodGet, "/Users/Me", token, nil))
+
+	t.Run("returns the same object as /Users/Me", func(t *testing.T) {
+		resp := h.do(http.MethodGet, "/Users/"+userID, token, nil)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("/Users/{id} returned %d, want 200", resp.StatusCode)
+		}
+		if got := h.bodyOf(resp); string(got) != string(me) {
+			t.Errorf("/Users/{id} and /Users/Me differ:\n got: %s\nwant: %s", got, me)
+		}
+	})
+
+	t.Run("under a prefix and lowercased", func(t *testing.T) {
+		resp := h.do(http.MethodGet, "/emby/users/"+userID, token, nil)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("prefixed lowercase returned %d, want 200", resp.StatusCode)
+		}
+	})
+
+	t.Run("another user is forbidden", func(t *testing.T) {
+		otherID := h.userID(t, h.loginAs(t, "other-person"))
+		if resp := h.do(http.MethodGet, "/Users/"+otherID, token, nil); resp.StatusCode != http.StatusForbidden {
+			t.Errorf("another user's object returned %d, want 403", resp.StatusCode)
+		}
+	})
+
+	// The precedence the fold has to reproduce. If /Users/{userId} ever won
+	// over these, "Me" and "Public" would be parsed as user ids.
+	t.Run("literals still beat the parameter", func(t *testing.T) {
+		if resp := h.do(http.MethodGet, "/users/me", token, nil); resp.StatusCode != http.StatusOK {
+			t.Errorf("/users/me returned %d, want 200", resp.StatusCode)
+		}
+		if resp := h.do(http.MethodGet, "/users/public", "", nil); resp.StatusCode != http.StatusOK {
+			t.Errorf("/users/public returned %d, want 200", resp.StatusCode)
+		}
+	})
+}

@@ -53,75 +53,87 @@ func New(sessions *service.SessionService, media *service.MediaService,
 // /emby and /mediabrowser aliases a real server also answers are handled by
 // withLegacyPaths ahead of this mux; see routes.go.
 //
-// Matching is still case-sensitive, which ASP.NET's is not. No observed client
-// varies its casing, so this remains a known gap rather than a fault, and it
-// is being closed as its own change: folding literal segments while leaving
-// path parameters alone needs a route trie, not a string operation.
+// Matching is case-insensitive, as a real server's is. The fold trie is built
+// from the patterns registered below and rewrites literal segments into these
+// spellings while leaving path parameters untouched; see routefold.go.
 func (a *API) Routes() http.Handler {
-	mux := http.NewServeMux()
+	table := newRouteTable()
+	a.registerCompatRoutes(table)
 
-	mux.HandleFunc("GET /System/Info/Public", a.handlePublicSystemInfo)
-	mux.HandleFunc("GET /System/Info", a.requireAuth(a.handleSystemInfo))
-	mux.HandleFunc("GET /Users/Public", a.handlePublicUsers)
+	return withLegacyPaths(buildFoldTrie(table.patterns), table.mux)
+}
 
-	mux.HandleFunc("GET /QuickConnect/Enabled", a.handleQuickConnectEnabled)
-	mux.HandleFunc("POST /QuickConnect/Initiate", a.handleQuickConnectInitiate)
+// registerCompatRoutes declares the surface. Separate from Routes so the
+// pattern list can be built and inspected without standing up a server.
+func (a *API) registerCompatRoutes(mux *routeTable) {
 
-	mux.HandleFunc("POST /Users/AuthenticateByName", a.handleAuthenticateByName)
-	mux.HandleFunc("GET /Users/Me", a.requireAuth(a.handleUsersMe))
+	mux.handle("GET /System/Info/Public", a.handlePublicSystemInfo)
+	mux.handle("GET /System/Info", a.requireAuth(a.handleSystemInfo))
+	mux.handle("GET /Users/Public", a.handlePublicUsers)
 
-	mux.HandleFunc("POST /Sessions/Capabilities", a.requireAuth(a.handleSessionCapabilities))
+	mux.handle("GET /QuickConnect/Enabled", a.handleQuickConnectEnabled)
+	mux.handle("POST /QuickConnect/Initiate", a.handleQuickConnectInitiate)
+
+	mux.handle("POST /Users/AuthenticateByName", a.handleAuthenticateByName)
+	mux.handle("GET /Users/Me", a.requireAuth(a.handleUsersMe))
+
+	mux.handle("POST /Sessions/Capabilities", a.requireAuth(a.handleSessionCapabilities))
 
 	// Held open for the life of the connection; see socket.go.
-	mux.HandleFunc("GET /socket", a.requireAuth(a.handleSocket))
+	mux.handle("GET /socket", a.requireAuth(a.handleSocket))
 
 	// Polled on the home screen. Empty, but never a 404; see polled.go.
-	mux.HandleFunc("GET /DisplayPreferences/default", a.requireAuth(a.handleDisplayPreferences))
-	mux.HandleFunc("GET /UserImage", a.requireAuth(a.handleUserImage))
-	mux.HandleFunc("GET /UserItems/Resume", a.requireAuth(a.handleResumeItems))
-	mux.HandleFunc("GET /Items/Latest", a.requireAuth(a.handleLatestItems))
-	mux.HandleFunc("GET /Shows/NextUp", a.requireAuth(a.handleNextUp))
-	mux.HandleFunc("GET /LiveTv/Recordings/Folders", a.requireAuth(a.handleRecordingFolders))
+	mux.handle("GET /DisplayPreferences/default", a.requireAuth(a.handleDisplayPreferences))
+	mux.handle("GET /UserImage", a.requireAuth(a.handleUserImage))
+	mux.handle("GET /UserItems/Resume", a.requireAuth(a.handleResumeItems))
+	mux.handle("GET /Items/Latest", a.requireAuth(a.handleLatestItems))
+	mux.handle("GET /Shows/NextUp", a.requireAuth(a.handleNextUp))
+	mux.handle("GET /LiveTv/Recordings/Folders", a.requireAuth(a.handleRecordingFolders))
 
 	// Browse. /UserViews is what a home screen is built from; without it the
 	// client cannot render one and restarts instead.
-	mux.HandleFunc("GET /UserViews", a.requireAuth(a.handleUserViews))
-	mux.HandleFunc("GET /Items", a.requireAuth(a.handleItems))
-	mux.HandleFunc("GET /Items/{id}", a.requireAuth(a.handleItem))
+	mux.handle("GET /UserViews", a.requireAuth(a.handleUserViews))
+	mux.handle("GET /Items", a.requireAuth(a.handleItems))
+	mux.handle("GET /Items/{id}", a.requireAuth(a.handleItem))
 
 	// Requested when a movie is opened. Empty in the recorded shape rather
 	// than absent, for the same reason /UserViews is here.
-	mux.HandleFunc("GET /Items/{id}/Intros", a.requireAuth(a.handleItemIntros))
-	mux.HandleFunc("GET /Items/{id}/Similar", a.requireAuth(a.handleSimilarItems))
-	mux.HandleFunc("GET /Items/{id}/SpecialFeatures", a.requireAuth(a.handleSpecialFeatures))
-	mux.HandleFunc("GET /Items/{id}/ThemeSongs", a.requireAuth(a.handleThemeSongs))
-	mux.HandleFunc("GET /MediaSegments/{id}", a.requireAuth(a.handleMediaSegments))
+	mux.handle("GET /Items/{id}/Intros", a.requireAuth(a.handleItemIntros))
+	mux.handle("GET /Items/{id}/Similar", a.requireAuth(a.handleSimilarItems))
+	mux.handle("GET /Items/{id}/SpecialFeatures", a.requireAuth(a.handleSpecialFeatures))
+	mux.handle("GET /Items/{id}/ThemeSongs", a.requireAuth(a.handleThemeSongs))
+	mux.handle("GET /MediaSegments/{id}", a.requireAuth(a.handleMediaSegments))
 
-	// No artwork exists in 0.0.1. Both spellings of the route are registered
+	// No artwork exists yet. Both spellings of the route are registered
 	// because clients build image URLs with and without an index.
-	mux.HandleFunc("GET /Items/{id}/Images/{type}", a.requireAuth(a.handleItemImage))
-	mux.HandleFunc("GET /Items/{id}/Images/{type}/{index}", a.requireAuth(a.handleItemImage))
+	//
+	// {type} is a PARAMETER, so case folding does not touch it: a request for
+	// .../Images/primary reaches the handler as "primary", not "Primary". That
+	// is harmless while this route 404s everything. WHOEVER IMPLEMENTS ARTWORK
+	// must compare the type case-insensitively, or split this into literal
+	// alternatives — otherwise a client that lowercases its paths gets a 404
+	// for an image that exists.
+	mux.handle("GET /Items/{id}/Images/{type}", a.requireAuth(a.handleItemImage))
+	mux.handle("GET /Items/{id}/Images/{type}/{index}", a.requireAuth(a.handleItemImage))
 
 	// Playback. The stream endpoint authenticates itself: the client fetches
 	// it from a media player that sends no credentials, so it accepts a
 	// capability tag as well as a token. See authorizeStream.
-	mux.HandleFunc("POST /Items/{id}/PlaybackInfo", a.requireAuth(a.handlePlaybackInfo))
-	mux.HandleFunc("GET /Videos/{id}/stream", a.handleVideoStream)
+	mux.handle("POST /Items/{id}/PlaybackInfo", a.requireAuth(a.handlePlaybackInfo))
+	mux.handle("GET /Videos/{id}/stream", a.handleVideoStream)
 
 	// The stream.{container} spelling is not registered here: net/http's mux
 	// requires a wildcard to be a whole path segment, so it is normalised
 	// onto this route by withLegacyPaths instead. See normalizeStreamSpelling.
 
-	mux.HandleFunc("POST /Sessions/Playing", a.requireAuth(a.handlePlaybackStarted))
-	mux.HandleFunc("POST /Sessions/Playing/Progress", a.requireAuth(a.handlePlaybackProgress))
-	mux.HandleFunc("POST /Sessions/Playing/Stopped", a.requireAuth(a.handlePlaybackStopped))
+	mux.handle("POST /Sessions/Playing", a.requireAuth(a.handlePlaybackStarted))
+	mux.handle("POST /Sessions/Playing/Progress", a.requireAuth(a.handlePlaybackProgress))
+	mux.handle("POST /Sessions/Playing/Stopped", a.requireAuth(a.handlePlaybackStopped))
 
 	// The legacy /Users/{userId}/... spellings, which carry the user in the
 	// path rather than in the token. Undocumented in the OpenAPI spec and
 	// still served by a real 10.11; see routes.go.
 	a.registerUserScopedRoutes(mux)
-
-	return withLegacyPaths(mux)
 }
 
 // ctxKey is unexported so no other package can collide with it.
