@@ -252,6 +252,34 @@ func remoteAddr(r *http.Request) string {
 	return host
 }
 
+// queryValue reads a query parameter the way the reference server does:
+// ignoring case, and ignoring underscores.
+//
+// Go's url.Values lookup is an exact map hit, and clients do NOT agree on the
+// spelling of these names. On the stream route alone, Wholphin sends "tag"
+// while jellyfin-web sends "Tag" and its credential as "ApiKey" rather than
+// "api_key" — and a real 10.11.8 accepts api_key, API_KEY, ApiKey, apikey,
+// APIKEY and Api_Key alike, all probed. Reading an exact name means silently
+// not seeing a parameter a client did send, which surfaces as an
+// authorization failure with no bad credential anywhere in the request.
+//
+// The scan is linear over the parameters actually present, which is a handful.
+func queryValue(r *http.Request, want string) string {
+	want = foldQueryName(want)
+
+	for name, values := range r.URL.Query() {
+		if len(values) > 0 && foldQueryName(name) == want {
+			return values[0]
+		}
+	}
+	return ""
+}
+
+// foldQueryName normalises a query parameter name for comparison.
+func foldQueryName(name string) string {
+	return strings.ToLower(strings.ReplaceAll(name, "_", ""))
+}
+
 // emptyStrings returns a non-nil empty slice.
 //
 // A nil slice marshals as null, and the SDK's generated types declare these

@@ -424,3 +424,91 @@ func TestUserObjectRoute(t *testing.T) {
 		}
 	})
 }
+
+// TestJellyfinWebStreamRequest is the literal request that failed on Gangland,
+// reproduced whole rather than in pieces.
+//
+// jellyfin-web builds its direct-play URL as
+//
+//	Videos/{id}/stream.{container}?Static=true&mediaSourceId=…&ApiKey=…&Tag=…
+//
+// taking {container} from the MediaSource's Container field and capitalising
+// both credential parameters. Reelix answered 401 to this, which read like a
+// credential problem and was not one: the route matched, and authorizeStream
+// simply could not see a "Tag" it was looking for as "tag".
+//
+// Both halves are exercised together on purpose. Fixing only the container
+// leaves a well-formed URL that still 401s; fixing only the lookup leaves a
+// URL built from a raw ffprobe list. The bug needed both.
+func TestJellyfinWebStreamRequest(t *testing.T) {
+	h := newHarness(t)
+	media := seedPlayable(t, h, recordedSize, map[int64]int{
+		recordedSeek: recordedMarkerLen,
+	})
+
+	id := compatID(media.item.ID)
+
+	for _, tc := range []struct{ name, url string }{
+		{
+			// Exactly what the bundle assembles, capitalisation included.
+			name: "jellyfin-web spelling",
+			url: "/Videos/" + id + "/stream.mkv?Static=true&mediaSourceId=" + id +
+				"&Tag=" + media.etag,
+		},
+		{
+			// The other credential jellyfin-web uses, as ApiKey rather than
+			// api_key. A real 10.11.8 accepts both.
+			name: "ApiKey rather than api_key",
+			url:  "/Videos/" + id + "/stream.mkv?Static=true&ApiKey=" + h.login(),
+		},
+		{
+			// Wholphin's spelling must keep working.
+			name: "wholphin spelling",
+			url: "/Videos/" + id + "/stream.mkv?static=true&tag=" + media.etag +
+				"&mediaSourceId=" + id,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := h.getRange(t, tc.url, fmt.Sprintf("bytes=%d-%d",
+				recordedSeek, recordedSeek+recordedMarkerLen-1))
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusPartialContent {
+				t.Fatalf("returned %d, want 206", resp.StatusCode)
+			}
+		})
+	}
+}
+
+// TestStreamStillRefusesABadCredential guards the fix above from having
+// widened the capability check rather than only its spelling.
+//
+// This is the one place Reelix is deliberately STRICTER than the reference,
+// which was probed serving these bytes to a request carrying no credential at
+// all — and even to one carrying a wrong tag. The capability model is Reelix's
+// own decision; making the lookup case-insensitive must not have quietly
+// turned it off.
+func TestStreamStillRefusesABadCredential(t *testing.T) {
+	h := newHarness(t)
+	media := seedPlayable(t, h, recordedSize, map[int64]int{
+		recordedSeek: recordedMarkerLen,
+	})
+
+	id := compatID(media.item.ID)
+
+	for _, tc := range []struct{ name, url string }{
+		{"no credential", "/Videos/" + id + "/stream.mkv?Static=true"},
+		{"wrong Tag", "/Videos/" + id + "/stream.mkv?Tag=deadbeef"},
+		{"wrong ApiKey", "/Videos/" + id + "/stream.mkv?ApiKey=deadbeef"},
+		{"empty Tag", "/Videos/" + id + "/stream.mkv?Tag="},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := h.getRange(t, tc.url, "")
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusUnauthorized {
+				t.Errorf("returned %d, want 401", resp.StatusCode)
+			}
+		})
+	}
+}

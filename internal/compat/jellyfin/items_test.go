@@ -924,3 +924,62 @@ func TestNoStreamFieldSerialisesAsTheStringNull(t *testing.T) {
 		}
 	}
 }
+
+// TestMediaSourceContainerIsASingleToken pins the split between the item's
+// container and the media source's.
+//
+// The expectations are what a real 10.11.8 returned for one file per
+// extension, all four probed directly; see mediaSourceContainer. A client
+// builds /Videos/{id}/stream.{container} from the media source field, so a
+// raw ffprobe list here is a broken URL rather than a cosmetic difference.
+func TestMediaSourceContainerIsASingleToken(t *testing.T) {
+	const mp4Family = "mov,mp4,m4a,3gp,3g2,mj2"
+
+	for _, tc := range []struct {
+		name     string
+		probed   string
+		filename string
+		want     string
+	}{
+		{"mp4 matches a token", mp4Family, "Gangland (2025).mp4", "mp4"},
+		{"mov matches a token", mp4Family, "Probe (2020).mov", "mov"},
+		// The case that rules out "just use the extension": m4v is not in the
+		// list, and the reference answers with the first token.
+		{"m4v falls back to the first token", mp4Family, "Probe (2020).m4v", "mov"},
+		{"matroska resolves to mkv", "matroska,webm", "Film (1999).mkv", "mkv"},
+		{"a single token passes through", "avi", "Film (1999).avi", "avi"},
+		{"no extension falls back", mp4Family, "Film", "mov"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			probed := tc.probed
+			if got := mediaSourceContainer(&probed, tc.filename); got != tc.want {
+				t.Errorf("mediaSourceContainer(%q, %q) = %q, want %q",
+					tc.probed, tc.filename, got, tc.want)
+			}
+		})
+	}
+
+	if got := mediaSourceContainer(nil, "Film (1999).mp4"); got != "" {
+		t.Errorf("an unprobed file reported %q, want an empty string", got)
+	}
+}
+
+// TestItemContainerKeepsTheRawProbeList is the other half, and is why
+// mediaSourceContainer exists separately rather than replacing containerName.
+//
+// The reference server reports ffprobe's raw list at the ITEM level for the
+// mp4 family — verified against a real server and visible in the Step 0
+// capture, where GET_Items carries an item whose Container is the full list.
+// Collapsing this to "mp4" for tidiness would diverge from the recorded
+// server on a field the fixtures pin.
+func TestItemContainerKeepsTheRawProbeList(t *testing.T) {
+	raw := "mov,mp4,m4a,3gp,3g2,mj2"
+	if got := containerName(&raw); got != raw {
+		t.Errorf("containerName(%q) = %q, want it left alone", raw, got)
+	}
+
+	matroska := "matroska,webm"
+	if got := containerName(&matroska); got != "mkv" {
+		t.Errorf("containerName(%q) = %q, want %q", matroska, got, "mkv")
+	}
+}

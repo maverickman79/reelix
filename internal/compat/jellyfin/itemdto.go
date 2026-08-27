@@ -471,7 +471,7 @@ func newMediaSourceDTO(detail service.ItemDetail, etag string, streams []mediaSt
 		ID:        compatID(detail.Item.ID),
 		Path:      "",
 		Type:      "Default",
-		Container: containerName(file.Container),
+		Container: mediaSourceContainer(file.Container, file.Filename),
 		// The filename without its extension, as the reference server sent
 		// it. This is release information rather than filesystem layout, and
 		// a client displays it when a user picks between versions.
@@ -702,6 +702,50 @@ func containerName(container *string) string {
 		return "mkv"
 	}
 	return *container
+}
+
+// mediaSourceContainer renders the container a MEDIA SOURCE reports.
+//
+// This is deliberately not the same string as the item-level Container, and
+// the difference is the reference server's, not ours. Probed against a real
+// 10.11.8 with one file per extension, all three of the mp4 family probing as
+// the identical ffprobe list "mov,mp4,m4a,3gp,3g2,mj2":
+//
+//	extension   Item.Container              MediaSource.Container
+//	.mp4        mov,mp4,m4a,3gp,3g2,mj2     mp4
+//	.m4v        mov,mp4,m4a,3gp,3g2,mj2     mov
+//	.mov        mov,mp4,m4a,3gp,3g2,mj2     mov
+//	.mkv        mkv                         mkv
+//
+// So the item keeps ffprobe's raw list and the media source carries a single
+// token. The rule that fits every observation: the file's extension when it
+// appears in the list, otherwise the FIRST token — which is why .m4v reports
+// "mov" rather than "m4v", and why this cannot be simplified to "use the
+// extension".
+//
+// It matters because a client BUILDS A URL from this field. jellyfin-web
+// requests /Videos/{id}/stream.{container}, so a raw list here produced
+// /Videos/{id}/stream.mov,mp4,m4a,3gp,3g2,mj2 and playback failed. Wholphin
+// never exposed it: every file in the Step 0 capture that it played was
+// matroska, which containerName already collapsed to "mkv".
+func mediaSourceContainer(container *string, filename string) string {
+	name := containerName(container)
+
+	// Already a single token — including "mkv", which containerName has
+	// resolved from ffprobe's "matroska,webm".
+	if !strings.Contains(name, ",") {
+		return name
+	}
+
+	ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(filename)), ".")
+
+	tokens := strings.Split(name, ",")
+	for _, token := range tokens {
+		if token == ext {
+			return token
+		}
+	}
+	return tokens[0]
 }
 
 // runtimeTicks converts a duration in seconds into .NET ticks.

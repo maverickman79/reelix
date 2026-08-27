@@ -249,13 +249,18 @@ func (a *API) failStream(w http.ResponseWriter, r *http.Request, err error) {
 //     from an authenticated PlaybackInfo call, which makes the URL a
 //     capability rather than an open endpoint.
 func (a *API) authorizeStream(r *http.Request, id uuid.UUID, updatedAt string) bool {
-	if tag := r.URL.Query().Get("tag"); tag != "" && tag == etagOf(compatID(id), updatedAt) {
+	// Read case-insensitively, and without regard to the underscore: Wholphin
+	// sends "tag" and jellyfin-web sends "Tag" and "ApiKey". A real server
+	// accepts every one of those spellings; reading exact names meant not
+	// seeing a credential the client had sent, and answering 401 to a request
+	// that carried a perfectly good one. See queryValue.
+	if tag := queryValue(r, "tag"); tag != "" && tag == etagOf(compatID(id), updatedAt) {
 		return true
 	}
 
 	token := ParseAuthorization(r).Token
 	if token == "" {
-		token = r.URL.Query().Get("api_key")
+		token = queryValue(r, "api_key")
 	}
 	if token == "" {
 		return false

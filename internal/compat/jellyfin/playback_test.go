@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -881,5 +882,108 @@ func TestStreamRefusalDoesNotOpenTheFile(t *testing.T) {
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("status %d, want 401 — the file was opened before the request was authorized",
 			resp.StatusCode)
+	}
+}
+
+// TestQueryValueIgnoresCaseAndUnderscores covers the lookup that decides
+// whether a stream request is authorized.
+//
+// Every spelling here is one a real client sends or a real 10.11.8 accepts:
+// Wholphin sends "tag", jellyfin-web sends "Tag" and "ApiKey", and the
+// reference answered 200 to api_key, API_KEY, ApiKey, apikey, APIKEY and
+// Api_Key alike. Reading an exact name means not seeing a credential the
+// client did send.
+func TestQueryValueIgnoresCaseAndUnderscores(t *testing.T) {
+	for _, tc := range []struct {
+		query string
+		want  string
+		name  string
+	}{
+		{"tag=abc", "abc", "tag"},
+		{"Tag=abc", "abc", "tag"},
+		{"TAG=abc", "abc", "tag"},
+		{"api_key=abc", "abc", "api_key"},
+		{"ApiKey=abc", "abc", "api_key"},
+		{"apikey=abc", "abc", "api_key"},
+		{"API_KEY=abc", "abc", "api_key"},
+		{"Api_Key=abc", "abc", "api_key"},
+		{"static=true", "", "tag"},
+		{"", "", "tag"},
+	} {
+		t.Run(tc.query+"/"+tc.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodGet, "/Videos/x/stream?"+tc.query, nil)
+			if got := queryValue(r, tc.name); got != tc.want {
+				t.Errorf("queryValue(%q, %q) = %q, want %q",
+					tc.query, tc.name, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestQueryValueDoesNotMatchADifferentParameter guards the linear scan
+// against becoming a prefix match.
+func TestQueryValueDoesNotMatchADifferentParameter(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet,
+		"/Videos/x/stream?tagline=nope&mediaSourceId=nope", nil)
+
+	if got := queryValue(r, "tag"); got != "" {
+		t.Errorf("queryValue matched a different parameter: %q", got)
+	}
+}
+
+// TestPlaybackInfoReportsASingleContainerForMP4 is the Gangland regression,
+// asserted on the field the client actually builds its URL from.
+//
+// mediaSourceContainer is unit-tested against all four probed extensions; this
+// checks the rule is WIRED INTO the media source DTO, which is precisely what
+// was wrong. containerName was correct and was simply applied at both levels,
+// so the item kept ffprobe's raw list — right, and matching the reference —
+// while the media source kept it too, which is wrong and produced
+// /Videos/{id}/stream.mov,mp4,m4a,3gp,3g2,mj2.
+//
+// The file on disk stays the seeded matroska; only the recorded container and
+// filename are rewritten, because the field under test is read from the
+// database row rather than from the bytes.
+func TestPlaybackInfoReportsASingleContainerForMP4(t *testing.T) {
+	h := newHarness(t)
+	media := seedPlayable(t, h, 64<<10, map[int64]int{0: 64 << 10})
+	token := h.login()
+
+	if _, err := h.pool.Exec(context.Background(),
+		`UPDATE media_files SET container = $1, filename = $2`,
+		"mov,mp4,m4a,3gp,3g2,mj2", "Gangland 2025 1080p WEB-DL H264-CinemaCity.mp4",
+	); err != nil {
+		t.Fatalf("rewriting the file row: %v", err)
+	}
+
+	f := loadFixture(t, "POST_Items_{id}_PlaybackInfo", "00")
+	var body any
+	if err := json.Unmarshal(f.Request.Body.JSON, &body); err != nil {
+		t.Fatalf("decoding the recorded request: %v", err)
+	}
+
+	resp := h.do(http.MethodPost,
+		"/Items/"+compatID(media.item.ID)+"/PlaybackInfo", token, body)
+	raw := h.bodyOf(resp)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d: %s", resp.StatusCode, raw)
+	}
+
+	var got struct {
+		MediaSources []struct {
+			Container string
+		}
+	}
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("decoding: %v\nbody was: %s", err, raw)
+	}
+	if len(got.MediaSources) != 1 {
+		t.Fatalf("got %d media sources, want 1", len(got.MediaSources))
+	}
+
+	if c := got.MediaSources[0].Container; c != "mp4" {
+		t.Errorf("MediaSource.Container = %q, want %q — a client builds "+
+			"/Videos/{id}/stream.%s from this", c, "mp4", c)
 	}
 }

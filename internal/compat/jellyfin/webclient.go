@@ -79,7 +79,7 @@ func (a *API) handleSystemEndpoint(w http.ResponseWriter, r *http.Request) {
 // THE SIZE PARAMETER IS CAPITALISED. jellyfin-web requests ?Size=, and Go's
 // query lookup is case-sensitive, so reading "size" would silently serve the
 // default to every real caller while every hand-written curl appeared to
-// work. Both spellings are accepted for that reason.
+// work. queryValue reads it without regard to case.
 //
 // Bytes are random rather than zeroes. A run of zeroes compresses to almost
 // nothing, and any compressing hop between server and client would turn a
@@ -96,10 +96,7 @@ func (a *API) handleSystemEndpoint(w http.ResponseWriter, r *http.Request) {
 func (a *API) handleBitrateTest(w http.ResponseWriter, r *http.Request) {
 	size := bitrateTestDefaultSize
 
-	raw := r.URL.Query().Get("Size")
-	if raw == "" {
-		raw = r.URL.Query().Get("size")
-	}
+	raw := queryValue(r, "size")
 
 	if raw != "" {
 		n, err := strconv.Atoi(raw)
