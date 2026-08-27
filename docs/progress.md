@@ -21,6 +21,98 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-27 — 0.0.2: route aliases, and a correction to compat-capture.md
+
+**Completed:**
+- `internal/compat/jellyfin/routes.go`: `withLegacyPaths` normalises the
+  request path ahead of the mux. Strips one leading `/emby` or
+  `/mediabrowser` segment case-insensitively, strips a trailing slash, and
+  rewrites `/Videos/{id}/stream.{ext}` onto `/Videos/{id}/stream`.
+- Seven user-scoped aliases: `/Users/{userId}/Items`, `/Items/{id}`,
+  `/Items/Resume`, `/Items/Latest`, `/Views`, `/Items/{id}/Intros`,
+  `/Items/{id}/SpecialFeatures`. Each delegates to the handler the modern
+  spelling uses.
+- `requireUserPath`: the path `userId` must be the authenticated user, or
+  403.
+- **`docs/compat-capture.md` corrected**, which is the most important part of
+  this change. See below.
+
+**Verified:**
+- `gofmt`, `go vet ./...` clean. Full suite green with a database and clean
+  without one.
+- **Fault-injected three times, each caught:** trusting the path `userId`
+  failed the 403 test; adding a `ThemeSongs` twin failed the absence test;
+  stripping any first segment rather than the two known aliases failed the
+  unknown-prefix test.
+- **Live against the running server**, every case: prefixed login (the VidHub
+  blocker) returns a token; `/emby`, `/mediabrowser` and `/Emby` all 200;
+  `/jellyfin`, `/api` and `/emby/emby` all still 404; all four user-scoped
+  list routes 200, including under a prefix; another user's items 403;
+  `ThemeSongs` 200 bare and 404 user-scoped; `stream`, `stream.mkv` and
+  `stream.mp4` each answer 206 to a range request at offset 5255045235.
+
+**In flight:**
+- Nothing.
+
+**Blocked:**
+- Nothing.
+
+**Next step:**
+- Case-insensitive route matching, as its own change. A real server folds the
+  whole surface; Reelix does not. It needs a trie over the route table that
+  folds literal segments and leaves path parameters untouched — lowercasing
+  the whole path would corrupt item ids and container extensions. No observed
+  client needs it yet, which is why it was deliberately not bundled here.
+- Still outstanding from the previous entry: open Fight Club on the SK1 and
+  confirm the track picker.
+
+**Decisions made:**
+- **The OpenAPI spec is not authoritative for route existence, and
+  `docs/compat-capture.md` said it was.** Its opening line read "Jellyfin's
+  OpenAPI spec tells you what routes exist." That claim has been the
+  foundation of every compatibility decision since Step 0 and it is false.
+  Working from it, the conclusion would have been that
+  `/Users/{userId}/Items` had been removed and should not be implemented.
+- **What the spec omits**, measured against a real 10.11.8: both prefix
+  aliases, the entire user-scoped family, and the `stream.{container}`
+  spellings. Diffing the 10.10.7 and 10.11.0 specs shows exactly one path
+  changed between them (`/System/WakeOnLanInfo`), so these were dropped from
+  the documentation long ago and are still served.
+- **Route existence is a question for the reference server.** The method is
+  now documented: bring up `jellyfin-ref` alone, probe unauthenticated, and
+  distinguish a routing 404 (`Content-Length: 0`, empty) from a handler 404
+  (`text/plain`, `Error processing request.`). Any other status means the
+  route exists. Always probe a control.
+- **The prefix list is fixed, not a rule.** Exactly `emby` and
+  `mediabrowser`, matched without regard to case, stripped once. Probing
+  confirmed `/jellyfin` and `/api` are not aliases and `/emby/emby` is not a
+  route. "Strip the first segment" would turn every typo into a 200 for the
+  wrong route.
+- **A middleware, not duplicate registrations.** The alias then applies to
+  routes added later, rather than leaving the next person wondering why
+  theirs is the only one VidHub cannot reach.
+- **User-scoped routes are written out, not generated.** The family is not
+  uniform: a real server has `/Items/{id}/ThemeSongs` and no user-scoped
+  twin. `TestThemeSongsHasNoUserScopedTwin` asserts that absence, so nobody
+  later completes the set mechanically. Matching the reference server means
+  matching what it declines to serve.
+- **Match-or-403 on the path `userId`, no administrator override.** Trusting
+  the path would let any authenticated client read any user's playback state
+  by editing a URL. An override would be a permissions system built ahead of
+  the permissions system; it goes in when groups and roles do.
+- **`stream.{container}` discards the extension.** Reelix serves the original
+  file whatever container is asked for, which is correct while direct play is
+  the only thing it does — there are no other bytes to send, and refusing a
+  request it can satisfy would be worse than ignoring a hint. **This becomes
+  a real decision the moment transcoding lands**: at that point the extension
+  is a client asking for a specific container and answering with a different
+  one is wrong rather than lenient. Noted in the code at
+  `normalizeStreamSpelling`, not only here.
+- **Deliberately excluded**, each a capability rather than an alias:
+  `/Audio/*` (no music library), the HLS routes (transcoding), the positional
+  image forms (no artwork), and `PlayedItems` / `FavoriteItems` / `Rating`
+  (features that exist in no spelling).
+
 ## 2026-08-27 — 0.0.2: stream metadata
 
 **Completed:**
