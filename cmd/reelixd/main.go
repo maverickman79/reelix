@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	v1 "github.com/maverickman79/reelix/internal/api/v1"
+	"github.com/maverickman79/reelix/internal/compat/jellyfin"
 	"github.com/maverickman79/reelix/internal/config"
 	"github.com/maverickman79/reelix/internal/db"
 	"github.com/maverickman79/reelix/internal/logging"
@@ -108,13 +109,17 @@ func run() error {
 		return fail("reap_jobs", err)
 	}
 
+	sessions := service.NewSessionService(pool)
+
 	nativeAPI := v1.New(
 		service.NewAuthService(pool),
 		service.NewLibraryService(pool),
 		scans,
 	)
 
-	srv := server.New(cfg.HTTP, log, version, nativeAPI)
+	compatAPI := jellyfin.New(sessions, log)
+
+	srv := server.New(cfg.HTTP, log, version, nativeAPI, compatAPI)
 	if err := srv.Run(ctx); err != nil {
 		return fail("serve", fmt.Errorf("http server: %w", err))
 	}

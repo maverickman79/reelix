@@ -17,6 +17,7 @@ import (
 	"time"
 
 	v1 "github.com/maverickman79/reelix/internal/api/v1"
+	"github.com/maverickman79/reelix/internal/compat/jellyfin"
 	"github.com/maverickman79/reelix/internal/config"
 	"github.com/maverickman79/reelix/internal/logging"
 )
@@ -39,9 +40,9 @@ type Server struct {
 
 // New builds a Server. It does not bind a port; call Run for that.
 //
-// nativeAPI is mounted under /api/v1. It may be nil, which serves only
-// /health — useful in tests that have no database.
-func New(cfg config.HTTP, log *slog.Logger, version string, nativeAPI *v1.API) *Server {
+// nativeAPI is mounted under /api/v1 and compatAPI at the root. Either may be
+// nil, which serves only /health — useful in tests that have no database.
+func New(cfg config.HTTP, log *slog.Logger, version string, nativeAPI *v1.API, compatAPI *jellyfin.API) *Server {
 	s := &Server{
 		cfg:     cfg,
 		log:     logging.Component(log, "http"),
@@ -55,6 +56,14 @@ func New(cfg config.HTTP, log *slog.Logger, version string, nativeAPI *v1.API) *
 		// StripPrefix so the API package writes its patterns relative to its
 		// own root and does not repeat the version in every route.
 		mux.Handle(v1.Prefix+"/", http.StripPrefix(v1.Prefix, nativeAPI.Routes()))
+	}
+
+	if compatAPI != nil {
+		// Mounted at the root, with no prefix: Jellyfin clients build
+		// absolute paths like /System/Info/Public and cannot be redirected.
+		// Its patterns are distinct from /health and /api/v1, so the mux
+		// separates them without further help.
+		mux.Handle("/", compatAPI.Routes())
 	}
 
 	s.http = &http.Server{

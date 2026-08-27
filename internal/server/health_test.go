@@ -15,7 +15,7 @@ func newTestServer(t *testing.T) *Server {
 	t.Helper()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	// nil native API: /health must not depend on the database being wired.
-	return New(config.HTTP{Addr: "127.0.0.1:0"}, log, "0.0.1-test", nil)
+	return New(config.HTTP{Addr: "127.0.0.1:0"}, log, "0.0.1-test", nil, nil)
 }
 
 func TestHealthOK(t *testing.T) {
