@@ -28,6 +28,8 @@ stay scannable. Prune entries older than the current minor version into
   and the item-level DTO are unchanged.
 - `queryValue`: query parameter lookup ignoring case and underscores, used for
   the stream credentials and for BitrateTest's `Size`.
+- **Gangland plays in jellyfin-web. Three clients now play: Wholphin, VidHub,
+  and the reference client.** Pushed to origin/main.
 
 **The bug, which was two bugs.** jellyfin-web direct-played an MP4 and
 requested `/Videos/{id}/stream.mov,mp4,m4a,3gp,3g2,mj2` → 401. Both faults had
@@ -68,11 +70,44 @@ A real server accepts `api_key`, `API_KEY`, `ApiKey`, `apikey`, `APIKEY` and
 two-spelling hack on `Size` from the previous session, which was the same bug
 found by luck rather than by looking.
 
-**This is a class, not an incident.** Any query parameter read by exact name is
-fragile in the same way. The credential parameters and `Size` are converted;
-`browseQuery` and the `client`/`userId` reads are NOT, because every observed
-client agrees on those spellings. Whoever sees a mystery "parameter ignored"
-should suspect this first.
+### The query-parameter case bug is a CLASS, and it was hit twice first
+
+This is the point most worth carrying forward, because it will recur with the
+next client.
+
+The fragile exact-name lookup entered in **Step 7** (`b2a7fee`, direct play),
+narrowing a Step 5 *decision* about query-string credentials — the decision is
+Step 5's, the code carrying the bug is Step 7's. It then went undiagnosed
+through **two separate encounters, because both times it presented as
+something else:**
+
+1. **Previous session, as `/Playback/BitrateTest`.** Presented as a missing
+   route and a retry storm. The capitalised `Size` was noticed only
+   incidentally while reading the client bundle for a different reason, and was
+   patched *locally* by reading both spellings. Treated as a quirk of one
+   parameter. **It was the same bug, and the local patch is what hid it.**
+2. **This session, as Gangland.** Presented first as a container bug, then as
+   an authentication failure — a 401 on a request carrying a perfectly valid
+   capability. Only reading the bundle's URL construction showed `Tag` and
+   `ApiKey` and connected it to the `Size` patch.
+
+Both encounters were one defect: **Go's query lookup is an exact map hit, and
+clients do not agree on the spelling of parameter names.** A real server
+accepts `api_key`, `API_KEY`, `ApiKey`, `apikey`, `APIKEY` and `Api_Key`
+alike — all probed. `queryValue` now matches that and absorbs the `Size` patch.
+
+**The general lesson, which is the reason this is written down:** a parameter
+read by exact name does not fail loudly. It fails as *absence* — the server
+behaves as though the client never sent it — so it surfaces as a missing
+feature, a wrong default, or a credential rejection, and never as "bad
+parameter name". Any of those symptoms on a new client should make this the
+first hypothesis, not the last.
+
+**What was deliberately left alone:** `browseQuery` and the `client`/`userId`
+reads still match exact names, because every observed client agrees on those
+spellings. That is a judgement, not an oversight — converting the whole surface
+blind would be a speculative refactor. Convert a read when a client is observed
+disagreeing with it.
 
 **Decisions made:**
 - **The capability check was NOT relaxed.** The reference server was probed
@@ -88,12 +123,9 @@ fault-injected independently and each caught; under the credential injection
 the Wholphin spelling stayed green, which is what shows the test discriminates
 rather than just failing.
 
-**Not verified:** Gangland actually playing in a browser. The URL shape and the
-credential path are covered end to end by tests against the real server and
-database, but the final confirmation is a play attempt.
-
-**Next step:** play Gangland in jellyfin-web. Then the `/socket` decision,
-which the previous entry left evidence for and this session did not touch.
+**Next step:** the `/socket` decision, which the entry below left the evidence
+for and neither session has taken. Nothing is blocked on it — the socket does
+not gate rendering or playback on any of the three clients.
 
 ---
 
