@@ -21,6 +21,85 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-27 — 0.0.2: playback state
+
+**Completed:**
+- `0005_playback_state.sql`: one row per user per item — the resume position,
+  the raw reported position, played, play count, last played.
+- `internal/repository/playback.go`: the report upsert. Play count applied as
+  a delta, played sticky in SQL, and a report that changes nothing writes
+  nothing.
+- `internal/repository/media.go`: `ListItems` joins one user's state, and
+  gains in-progress / played / unplayed filters and a last-played ordering.
+  `ItemRuntime` is the single-row lookup every progress report makes.
+- `internal/service/playback.go`: `Evaluate` (the thresholds) and `Record`.
+- `MediaService.Browse` and `.Item` take the requesting user.
+- Compatibility: real `UserData` everywhere, `/UserItems/Resume`,
+  `/Items/Latest` excluding played items, and the three `/Sessions/Playing*`
+  reports writing through.
+
+**Verified:**
+- `gofmt`, `go vet ./...` clean. Full suite green with a database and clean
+  without one.
+- **Fault-injected three times, each caught:** dropping the lower threshold
+  failed both capture-derived cases; removing the no-op suppression failed the
+  paused-client test; making the start report store failed the test that a
+  resume position survives pressing play.
+- **Live against the real library**, whole flow: press play (nothing
+  recorded), two minutes in (nothing — 2.5%), thirty minutes in (appears in
+  Continue Watching at 0:30:00), press play again (position survives), stop at
+  forty minutes (0:40:00), watch to 98% (played, count 1, gone from the list,
+  gone from the latest row). Five identical paused reports left `updated_at`
+  untouched. A failed stop changed nothing.
+- Migration 5 applied to the real database on restart; six items and 136
+  streams intact.
+
+**In flight:**
+- Nothing.
+
+**Blocked:**
+- Nothing.
+
+**Next step:**
+- Hardware: play Idiocracy on the SK1, stop partway, resume from Continue
+  Watching, finish it, and watch it leave the row. Then 0.0.2's second item,
+  stream metadata — language, title, profile, frame rate — which needs a wider
+  probe, a migration and a re-scan, and retires most of the allowance list in
+  `fixture_test.go`.
+
+**Decisions made:**
+- **The thresholds are 5% / 90% / five minutes, and they are Reelix's.** The
+  capture bounds the lower one without pinning it: the reference server was
+  watched to 2.5% of Idiocracy and 0.24% of Congo and reported a resume
+  position of zero and an empty list both times. Jellyfin exposes the same
+  three as dashboard settings with these defaults — published configuration,
+  not source. Both recorded stops are now regression tests.
+- **The runtime floor gates resuming only.** A four-minute item is never
+  resumable, but a four-minute item watched to the end is still played.
+- **Both positions are stored.** The judged one keeps every read trivial; the
+  raw one means changing the thresholds later reinterprets history instead of
+  having discarded it.
+- **Every progress report is a write, and the paused ones are not.** One
+  report per five seconds per stream is a single-row upsert on a primary key.
+  Coalescing in memory would put this state in the one place a crash destroys
+  it, and would be wrong the moment there is a second process. The upsert
+  suppresses no-op writes, so a paused client costs nothing.
+- **The start report is logged, never stored.** It carries no position, so
+  storing it would clear the resume point the client is about to seek to.
+  Pinned by a test that fails if anyone makes the three reports uniform.
+- **A viewing is counted when a completed playback ends**, not when one
+  begins. The reference server counted a fifteen-second sample as a play;
+  "watched 3 times" should mean watched. Rewatching and finishing again counts
+  a second.
+- **Played is sticky**, and can coexist with a resume position when someone
+  starts a rewatch.
+- `/Items/Latest` excludes played items, because Reelix has advertised
+  `HidePlayedInLatest: true` since Step 5 and that was not true until now.
+- `sortBy=DatePlayed` and `isPlayed` are answerable for the first time and are
+  now wired rather than falling back.
+- A report about an item no longer in the library answers 204 and records
+  nothing, logging `unknown_item`. The client cannot correct that.
+
 ## 2026-08-27 — v0.0.1 RETROSPECTIVE — the first vertical slice is complete
 
 Wholphin on the Ugoos SK1 discovers Reelix, authenticates, browses a movie
