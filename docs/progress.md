@@ -21,6 +21,106 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-27 — Step 7: direct play and seeking
+
+**Completed:**
+- `internal/service/playback.go`: `PlaybackService` — the direct-play decision
+  and file resolution. `Locate` reads the database only; `Open` resolves the
+  path, checks containment and opens, in that order.
+- `internal/compat/jellyfin/playback.go`: `POST /Items/{id}/PlaybackInfo`,
+  `GET /Videos/{id}/stream` via `http.ServeContent`, and `/Sessions/Playing`,
+  `/Sessions/Playing/Progress`, `/Sessions/Playing/Stopped`.
+- `MediaSources[].Name` now drops the file extension, matching the reference.
+
+**Verified:**
+- `gofmt`, `go vet ./...` clean. 541 tests pass with a database; without
+  `REELIX_TEST_DB_DSN` everything skips cleanly and nothing fails.
+- **Seeking is tested at the offsets the SK1 actually requested** — 9471,
+  95743368 and 5255045235, the last past what a 32-bit offset holds — against
+  a sparse 5255910143-byte file whose content encodes its own position, so a
+  read from the wrong offset fails on the bytes and not merely the headers.
+  The test skips with a message if the filesystem materialises the file
+  instead of leaving it sparse; on ext4 here it ran in 0.44s and used no disk.
+- **The range tests were fault-injected twice.** Dropping the Range header
+  turned every seek into a 200 and was caught; shifting the reader by one byte
+  kept every status and Content-Range correct and was still caught, by the
+  byte-pattern assertion, at all four offsets. That second case is the one a
+  header-only test would have waved through.
+- **Live against the real 5.2 GB Idiocracy file**, the same one in the
+  capture: PlaybackInfo returned Size 5255910143, RunTimeTicks 50503790000 and
+  27 streams — identical to the recorded response — and the bytes served at
+  all four offsets were byte-for-byte equal to the file on disk. 416 and the
+  file tail behave. `Content-Type: video/x-matroska`, `Accept-Ranges: bytes`.
+- Authorization live: tag alone 206, api_key alone 206, header token 206,
+  nothing 401, wrong tag 401, unknown item 404.
+- One playback is legible in the log from start to finish, correlated by
+  `play_session_id`: the decision and its reason, each range served, then
+  started / progress / stopped with positions as `0:02:06`. No token or
+  authorization header reaches it.
+
+**In flight:**
+- Nothing.
+
+**Blocked:**
+- Nothing.
+
+**Next step:**
+- Verify on the SK1: Idiocracy direct-plays and seeking works forward and
+  backward. That is the last of the eleven success criteria; when it passes,
+  tag `v0.0.1` and write the retrospective.
+
+**Decisions made:**
+- **THE STREAM ENDPOINT TAKES NO SESSION TOKEN, AND THIS NARROWS A STEP 5
+  DECISION. Do not "restore consistency" here — it breaks playback.** All nine
+  recorded `/Videos/{id}/stream` requests come from ExoPlayer's own HTTP stack
+  (`Dalvik/2.1.0`, not the SDK's OkHttp) carrying no `Authorization` header and
+  no `api_key`. Requiring a token means playback never starts. The endpoint
+  therefore accepts EITHER:
+  - a valid session token, in the header **or as `api_key`**. Step 5 refused
+    query-string credentials because they leak through access logs; that
+    reasoning does not apply here, because the request logger deliberately
+    omits query strings. The exception is this route only.
+  - the media source's ETag as `tag`, which a client can only have learned
+    from an authenticated PlaybackInfo call. That makes the URL a capability
+    rather than an open endpoint.
+- **Locate before authorize before open.** A request that turns out not to be
+  allowed never reaches the filesystem: `Locate` is database-only, and the
+  containment check and the open happen together inside `Open` so neither can
+  be skipped.
+- **Path containment is checked on every request, not trusted from the scan.**
+  Symlinks are resolved on both sides first: a lexical prefix check would
+  accept a link inside the library pointing anywhere on the host, which is the
+  case the check exists to stop. Covered by a test that plants exactly that
+  symlink.
+- **The direct-play decision checks container and codec membership only.**
+  Bitrate ceilings, codec profiles, levels and reference-frame limits belong
+  to a transcoding decision engine 0.0.1 does not have: Reelix hands over the
+  original file or nothing, so a finer-grained "no" changes no outcome while
+  risking a false refusal. ffprobe's comma-separated format list is split, so
+  an mp4's `mov,mp4,m4a,3gp,3g2,mj2` matches a device that lists `mp4`.
+  Permissive when the profile is missing or states nothing.
+- **A mismatch answers `SupportsDirectPlay: false`** rather than failing: the
+  user gets "unsupported" instead of a spinner that never resolves.
+- **`Content-Type` is set explicitly from the container.** Go's sniffer knows
+  Matroska's EBML header only as WebM, so an .mkv would go out as video/webm —
+  the kind of mismatch that surfaces as an unexplained failure inside a player
+  rather than as an error.
+- **`http.ServeContent` owns the range arithmetic.** It is int64 throughout,
+  which is what the 5255045235-byte seek depends on, and it brings If-Range,
+  HEAD and 416 with it. The handler's job is to not undo that.
+- Progress reports are logged at debug, start and stop at info: a client
+  reports every few seconds — twenty-four times for one film in the capture —
+  and at info that buries everything else.
+- The play session id is minted per PlaybackInfo call and never stored. It
+  correlates the log; nothing depends on it server-side.
+
+**Known limitation — no playback state, for 0.0.2:**
+Nothing is persisted. The milestone asks that a playback session be visible in
+the log, and it is, but that means `/UserItems/Resume` stays empty and
+`UserData.PlaybackPositionTicks` stays 0 no matter how much of a film is
+watched. This is by design in 0.0.1, not a bug: resume needs a table, a
+migration, and a decision about what "watched" means.
+
 ## 2026-08-27 — Step 6, second half: browse
 
 **Completed:**
