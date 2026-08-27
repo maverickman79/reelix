@@ -71,6 +71,10 @@ func (a *API) registerCompatRoutes(mux *routeTable) {
 	mux.handle("GET /System/Info", a.requireAuth(a.handleSystemInfo))
 	mux.handle("GET /Users/Public", a.handlePublicUsers)
 
+	// Read by a login page before it has a token, so unauthenticated, as on
+	// the reference server.
+	mux.handle("GET /Branding/Configuration", a.handleBranding)
+
 	mux.handle("GET /QuickConnect/Enabled", a.handleQuickConnectEnabled)
 	mux.handle("POST /QuickConnect/Initiate", a.handleQuickConnectInitiate)
 
@@ -94,6 +98,12 @@ func (a *API) registerCompatRoutes(mux *routeTable) {
 	// jellyfin-web will not render a page until it gets an answer.
 	mux.handle("GET /DisplayPreferences/{prefsId}", a.requireAuth(a.handleDisplayPreferences))
 	mux.handle("GET /UserImage", a.requireAuth(a.handleUserImage))
+
+	// jellyfin-web's bitrate routine. These two are ONE loop, not two routes:
+	// it caches /System/Endpoint only on success, so a 404 on either leaves
+	// the pair re-requesting forever. See webclient.go.
+	mux.handle("GET /System/Endpoint", a.requireAuth(a.handleSystemEndpoint))
+	mux.handle("GET /Playback/BitrateTest", a.requireAuth(a.handleBitrateTest))
 	mux.handle("GET /UserItems/Resume", a.requireAuth(a.handleResumeItems))
 	mux.handle("GET /Items/Latest", a.requireAuth(a.handleLatestItems))
 	mux.handle("GET /Shows/NextUp", a.requireAuth(a.handleNextUp))

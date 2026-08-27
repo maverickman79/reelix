@@ -180,6 +180,33 @@ type sessionCapabilities struct {
 	SupportsPersistentIdentifier bool     `json:"SupportsPersistentIdentifier"`
 }
 
+// brandingOptions is GET /Branding/Configuration.
+//
+// LoginDisclaimer and CustomCss are POINTERS so that a nil value is OMITTED
+// rather than serialised as null, which is what the reference server does.
+// That was established by setting branding on a reference instance and
+// reading it back: a null string is dropped from the object field by field,
+// while an empty string is emitted. Reelix configures no branding, so the
+// whole object it serves is {"SplashscreenEnabled":false}.
+//
+// Do not "complete" this by emitting the two fields as null. That is a
+// different response from the one a real server sends, and it was the shape
+// this would have been given by inference rather than by probing.
+type brandingOptions struct {
+	LoginDisclaimer     *string `json:"LoginDisclaimer,omitempty"`
+	CustomCSS           *string `json:"CustomCss,omitempty"`
+	SplashscreenEnabled bool    `json:"SplashscreenEnabled"`
+}
+
+// endpointInfo is GET /System/Endpoint.
+//
+// Both fields describe the CALLER, not the server: whether the request came
+// from the same machine, and whether it came from a private network.
+type endpointInfo struct {
+	IsLocal     bool `json:"IsLocal"`
+	IsInNetwork bool `json:"IsInNetwork"`
+}
+
 // clientCapabilitiesRequest is the body POST /Sessions/Capabilities/Full
 // carries.
 //

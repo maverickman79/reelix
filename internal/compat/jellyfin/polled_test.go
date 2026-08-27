@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"testing"
 )
 
@@ -331,5 +332,116 @@ func TestDisplayPreferencesKeyIsCaseSensitive(t *testing.T) {
 	if lower, upper := id("default"), id("DEFAULT"); lower == upper {
 		t.Errorf("keys %q and %q both answered id %q; the key was folded",
 			"default", "DEFAULT", lower)
+	}
+}
+
+// TestBrandingOmitsUnsetStrings pins the shape probing established.
+//
+// The reference server drops a null string from this object field by field
+// rather than serialising it as null — verified by setting branding on a
+// reference instance and reading it back, where an empty string IS emitted
+// and a null is not. Reelix configures no branding, so the correct answer is
+// exactly one field.
+//
+// This is asserted on the raw JSON rather than through a struct, because the
+// whole point is which keys are absent, and decoding into a struct cannot
+// tell an absent field from a null one.
+func TestBrandingOmitsUnsetStrings(t *testing.T) {
+	h := newHarness(t)
+
+	// Unauthenticated on purpose: a login page reads this before it has a
+	// token.
+	resp := h.do(http.MethodGet, "/Branding/Configuration", "", nil)
+	raw := h.bodyOf(resp)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d, want 200: %s", resp.StatusCode, raw)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("decoding branding: %v\nbody was: %s", err, raw)
+	}
+
+	if _, present := got["LoginDisclaimer"]; present {
+		t.Errorf("LoginDisclaimer is present; the reference omits an unset one: %s", raw)
+	}
+	if _, present := got["CustomCss"]; present {
+		t.Errorf("CustomCss is present; the reference omits an unset one: %s", raw)
+	}
+	if got["SplashscreenEnabled"] != false {
+		t.Errorf("SplashscreenEnabled = %v, want false: %s", got["SplashscreenEnabled"], raw)
+	}
+}
+
+// TestBitrateTestAcceptsCapitalisedSize is the whole reason that route reads
+// two spellings.
+//
+// jellyfin-web requests ?Size=, and Go's query lookup is case-sensitive. A
+// handler reading only "size" would serve the default length to every real
+// caller while looking correct to anyone testing it by hand with lowercase.
+func TestBitrateTestAcceptsCapitalisedSize(t *testing.T) {
+	h := newHarness(t)
+	token := h.login()
+
+	const want = 4096
+
+	for _, spelling := range []string{"Size", "size"} {
+		t.Run(spelling, func(t *testing.T) {
+			resp := h.do(http.MethodGet,
+				"/Playback/BitrateTest?"+spelling+"="+strconv.Itoa(want), token, nil)
+			raw := h.bodyOf(resp)
+
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("status %d, want 200", resp.StatusCode)
+			}
+			if len(raw) != want {
+				t.Errorf("served %d bytes for %s=%d, want %d",
+					len(raw), spelling, want, want)
+			}
+		})
+	}
+}
+
+// TestBitrateTestRejectsAnAbsurdSize keeps an unbounded allocation off a
+// route any authenticated client can reach with a number of its choosing.
+func TestBitrateTestRejectsAnAbsurdSize(t *testing.T) {
+	h := newHarness(t)
+	token := h.login()
+
+	for _, size := range []string{"999999999999", "0", "-1", "notanumber"} {
+		t.Run(size, func(t *testing.T) {
+			resp := h.do(http.MethodGet, "/Playback/BitrateTest?Size="+size, token, nil)
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Errorf("status %d for Size=%s, want 400", resp.StatusCode, size)
+			}
+		})
+	}
+}
+
+// TestSystemEndpointDescribesTheCaller checks the pair of booleans that
+// jellyfin-web caches.
+//
+// The test server is reached over loopback, so both must be true. A false
+// here would tell a client on the same machine to ask for a degraded stream.
+func TestSystemEndpointDescribesTheCaller(t *testing.T) {
+	h := newHarness(t)
+
+	resp := h.do(http.MethodGet, "/System/Endpoint", h.login(), nil)
+	raw := h.bodyOf(resp)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d, want 200: %s", resp.StatusCode, raw)
+	}
+
+	var got endpointInfo
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("decoding endpoint info: %v\nbody was: %s", err, raw)
+	}
+	if !got.IsLocal || !got.IsInNetwork {
+		t.Errorf("IsLocal=%v IsInNetwork=%v over loopback, want both true",
+			got.IsLocal, got.IsInNetwork)
 	}
 }
