@@ -695,3 +695,77 @@ func TestCompatIDRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+// TestSessionCapabilitiesFullRecordsTheBody covers the JSON-body spelling.
+//
+// jellyfin-web reports its capabilities only this way. There is no fixture:
+// the Step 0 capture is Wholphin, which uses the query-parameter spelling, so
+// this shape came from probing the reference server directly.
+//
+// The route does not block jellyfin-web — it neither awaits the call nor
+// handles its rejection — so this asserts the capabilities are actually
+// stored rather than merely accepted, which is the only reason to serve it.
+func TestSessionCapabilitiesFullRecordsTheBody(t *testing.T) {
+	h := newHarness(t)
+	token := h.login()
+
+	resp := h.do(http.MethodPost, "/Sessions/Capabilities/Full", token,
+		map[string]any{
+			"PlayableMediaTypes":           []string{"Audio", "Video"},
+			"SupportedCommands":            []string{"DisplayMessage", "GoHome"},
+			"SupportsMediaControl":         true,
+			"SupportsPersistentIdentifier": true,
+			// The reference accepts and ignores these; so must Reelix.
+			"DeviceProfile": nil,
+			"AppStoreUrl":   nil,
+			"IconUrl":       nil,
+		})
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("status %d, want 204", resp.StatusCode)
+	}
+
+	var (
+		playable  []string
+		commands  []string
+		mediaCtrl bool
+	)
+	if err := h.pool.QueryRow(context.Background(),
+		`SELECT playable_media_types, supported_commands, supports_media_control FROM sessions`).
+		Scan(&playable, &commands, &mediaCtrl); err != nil {
+		t.Fatalf("reading session: %v", err)
+	}
+
+	if len(playable) != 2 || playable[0] != "Audio" || playable[1] != "Video" {
+		t.Errorf("playable_media_types = %v, want [Audio Video]", playable)
+	}
+	if len(commands) != 2 || commands[0] != "DisplayMessage" {
+		t.Errorf("supported_commands = %v, want [DisplayMessage GoHome]", commands)
+	}
+	if !mediaCtrl {
+		t.Error("supports_media_control was not recorded")
+	}
+}
+
+// TestSessionCapabilitiesFullAcceptsUnknownCommands pins a deliberate
+// divergence from the reference server.
+//
+// The reference validates SupportedCommands against its enum and answers 400
+// for a value it does not know. Reelix stores the strings as sent: it acts on
+// none of these commands in 0.0.1, so rejecting a client for advertising a
+// newer capability than our copy of the list would break it over a value
+// nothing reads. Accepting more than the reference cannot break a client;
+// accepting less can.
+func TestSessionCapabilitiesFullAcceptsUnknownCommands(t *testing.T) {
+	h := newHarness(t)
+	token := h.login()
+
+	resp := h.do(http.MethodPost, "/Sessions/Capabilities/Full", token,
+		map[string]any{"SupportedCommands": []string{"ACommandFromTheFuture"}})
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("status %d, want 204", resp.StatusCode)
+	}
+}

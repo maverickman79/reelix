@@ -180,6 +180,26 @@ type sessionCapabilities struct {
 	SupportsPersistentIdentifier bool     `json:"SupportsPersistentIdentifier"`
 }
 
+// clientCapabilitiesRequest is the body POST /Sessions/Capabilities/Full
+// carries.
+//
+// The bare /Sessions/Capabilities route takes the same information as query
+// parameters; this one takes it as JSON. Wholphin uses the query form,
+// jellyfin-web uses this one, and a real server serves both.
+//
+// The reference also accepts DeviceProfile, AppStoreUrl and IconUrl here.
+// They are deliberately absent: 0.0.1 stores none of them, transcoding is
+// excluded from the milestone so a device profile has nothing to influence,
+// and encoding/json ignores fields it was not given a home for. Probing
+// confirmed the reference answers 204 to a body carrying unknown fields, so
+// being the more permissive of the two costs nothing.
+type clientCapabilitiesRequest struct {
+	PlayableMediaTypes           []string `json:"PlayableMediaTypes"`
+	SupportedCommands            []string `json:"SupportedCommands"`
+	SupportsMediaControl         bool     `json:"SupportsMediaControl"`
+	SupportsPersistentIdentifier bool     `json:"SupportsPersistentIdentifier"`
+}
+
 // playState is the playback state of a session.
 //
 // 0.0.1 tracks no playback state, so this is the idle shape the reference

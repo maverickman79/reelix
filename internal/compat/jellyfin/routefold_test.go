@@ -21,7 +21,7 @@ var testPatterns = []string{
 	"GET /Items/{id}/Intros",
 	"GET /Items/{id}/Images/{type}",
 	"GET /Videos/{id}/stream",
-	"GET /DisplayPreferences/default",
+	"GET /DisplayPreferences/{prefsId}",
 }
 
 func testTrie() *foldNode { return buildFoldTrie(testPatterns) }
@@ -36,7 +36,11 @@ func TestFoldRewritesLiteralSegments(t *testing.T) {
 		{"mixed", "/SyStEm/InFo/pUbLiC", "/System/Info/Public"},
 
 		{"single segment", "/items", "/Items"},
-		{"registered lowercase literal keeps its spelling", "/displaypreferences/DEFAULT", "/DisplayPreferences/default"},
+		// The preferences key is a parameter, so only the literal ahead of it
+		// folds. Its case MUST survive: the reference server treats
+		// "default", "DEFAULT" and "Default" as three separate preference
+		// records, so folding the key would merge records it keeps apart.
+		{"prefs key keeps its case, literal folds", "/displaypreferences/DEFAULT", "/DisplayPreferences/DEFAULT"},
 
 		// The route VidHub could not reach.
 		{"stream", "/videos/abc123/stream", "/Videos/abc123/stream"},

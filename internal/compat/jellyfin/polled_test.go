@@ -237,3 +237,99 @@ func TestUserImageCarriesTheRequestID(t *testing.T) {
 		t.Errorf("traceId = %q, want the request id %q", got.TraceID, id)
 	}
 }
+
+// TestDisplayPreferencesServesAnyKey pins the parameterised preferences key.
+//
+// jellyfin-web asks for "usersettings" and Wholphin asks for "default". Both
+// must answer, and so must a key neither of them uses: the reference server
+// answers 200 for any key at all, which is why this is a path parameter
+// rather than a set of literals.
+//
+// This is the route whose 404 left jellyfin-web on its loading screen
+// forever. Its post-login chain awaits this call with no rejection handler,
+// so anything other than a 200 stops the client before it renders.
+func TestDisplayPreferencesServesAnyKey(t *testing.T) {
+	h := newHarness(t)
+	token := h.login()
+
+	ids := map[string]string{}
+
+	for _, key := range []string{"default", "usersettings", "somekeynobodyuses"} {
+		t.Run(key, func(t *testing.T) {
+			resp := h.do(http.MethodGet,
+				"/DisplayPreferences/"+key+"?userId=x&client=emby", token, nil)
+			raw := h.bodyOf(resp)
+
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("status %d, want 200: %s", resp.StatusCode, raw)
+			}
+
+			var got struct {
+				ID          string         `json:"Id"`
+				Client      string         `json:"Client"`
+				CustomPrefs map[string]any `json:"CustomPrefs"`
+			}
+			if err := json.Unmarshal(raw, &got); err != nil {
+				t.Fatalf("decoding display preferences: %v\nbody was: %s", err, raw)
+			}
+			if got.ID == "" {
+				t.Error("Id is empty")
+			}
+			if got.Client != "emby" {
+				t.Errorf("Client = %q, want the query parameter echoed back", got.Client)
+			}
+			// jellyfin-web reads CustomPrefs off the response without a nil
+			// check on the object itself.
+			if got.CustomPrefs == nil {
+				t.Error("CustomPrefs is null; the client dereferences it")
+			}
+			ids[key] = got.ID
+		})
+	}
+
+	// Distinct per key. The reference derives a different id for each, and a
+	// client caching preferences by id would otherwise merge two records.
+	seen := map[string]string{}
+	for key, id := range ids {
+		if other, clash := seen[id]; clash {
+			t.Errorf("keys %q and %q share id %q", other, key, id)
+		}
+		seen[id] = key
+	}
+}
+
+// TestDisplayPreferencesKeyIsCaseSensitive pins a property of the fold trie
+// that the reference server settled.
+//
+// "default" and "DEFAULT" are two separate preference records on a real
+// server, with two different ids. Registering the key as a literal would fold
+// the second onto the first and merge them. Whoever is tempted to add
+// "default" back as a literal route has to change this test first.
+func TestDisplayPreferencesKeyIsCaseSensitive(t *testing.T) {
+	h := newHarness(t)
+	token := h.login()
+
+	id := func(key string) string {
+		t.Helper()
+
+		resp := h.do(http.MethodGet, "/DisplayPreferences/"+key+"?client=emby", token, nil)
+		raw := h.bodyOf(resp)
+
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status %d for key %q, want 200: %s", resp.StatusCode, key, raw)
+		}
+
+		var got struct {
+			ID string `json:"Id"`
+		}
+		if err := json.Unmarshal(raw, &got); err != nil {
+			t.Fatalf("decoding display preferences: %v\nbody was: %s", err, raw)
+		}
+		return got.ID
+	}
+
+	if lower, upper := id("default"), id("DEFAULT"); lower == upper {
+		t.Errorf("keys %q and %q both answered id %q; the key was folded",
+			"default", "DEFAULT", lower)
+	}
+}

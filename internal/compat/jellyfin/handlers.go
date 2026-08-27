@@ -183,8 +183,8 @@ func (a *API) handleUsersMe(w http.ResponseWriter, r *http.Request) {
 // handleSessionCapabilities serves POST /Sessions/Capabilities.
 //
 // Wholphin sends these as query parameters with an empty body, and the
-// reference server answers 204. Note this is the bare route, not the
-// /Sessions/Capabilities/Full variant that takes a JSON body.
+// reference server answers 204. This is the bare route; its JSON-body sibling
+// is handleSessionCapabilitiesFull.
 func (a *API) handleSessionCapabilities(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
@@ -197,6 +197,58 @@ func (a *API) handleSessionCapabilities(w http.ResponseWriter, r *http.Request) 
 
 	if err := a.sessions.SetCapabilities(r.Context(), sessionFrom(r.Context()).ID, caps); err != nil {
 		a.fail(r, "session_capabilities", err)
+		writeStatus(w, http.StatusInternalServerError)
+		return
+	}
+
+	writeStatus(w, http.StatusNoContent)
+}
+
+// handleSessionCapabilitiesFull serves POST /Sessions/Capabilities/Full.
+//
+// The same information as the bare route, sent as a JSON body instead of
+// query parameters. jellyfin-web reports its capabilities only this way — its
+// api client posts here directly after authenticating.
+//
+// IT DOES NOT BLOCK ANYTHING. jellyfin-web neither awaits this call nor
+// attaches a rejection handler to it, so a 404 here leaves an unhandled
+// promise rejection in the console and nothing else. It is implemented
+// because it belongs to the same login exchange as the routes that do block,
+// and because it lands on a service method that already exists — not because
+// the client is waiting on it.
+//
+// Decoding is deliberately lenient where the reference is strict. Probing
+// showed the reference rejects an unrecognised SupportedCommands value with
+// 400; Reelix stores the strings as sent. Reelix does not act on these
+// commands in 0.0.1 — it records what the client claims — so validating an
+// enum here would reject a client for advertising a capability newer than our
+// copy of the list, which is a worse failure than storing a string nobody
+// reads.
+func (a *API) handleSessionCapabilitiesFull(w http.ResponseWriter, r *http.Request) {
+	var body clientCapabilitiesRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		// 400 rather than 415: the reference distinguishes a missing
+		// Content-Type from an unparseable body, and Reelix has one failure
+		// mode here. A client that gets this far has sent something it
+		// intended as JSON.
+		writeStatus(w, http.StatusBadRequest)
+		return
+	}
+
+	// Both arrays are normalised to non-nil. An absent JSON field decodes to
+	// a nil slice, which reaches Postgres as NULL, and both columns are NOT
+	// NULL — so a client omitting either one would get a 500 for a body the
+	// reference server answers 204 to. The query-parameter route cannot hit
+	// this because trimmed() never returns nil.
+	caps := domain.Session{
+		PlayableMediaTypes:           nonNil(body.PlayableMediaTypes),
+		SupportedCommands:            nonNil(body.SupportedCommands),
+		SupportsMediaControl:         body.SupportsMediaControl,
+		SupportsPersistentIdentifier: body.SupportsPersistentIdentifier,
+	}
+
+	if err := a.sessions.SetCapabilities(r.Context(), sessionFrom(r.Context()).ID, caps); err != nil {
+		a.fail(r, "session_capabilities_full", err)
 		writeStatus(w, http.StatusInternalServerError)
 		return
 	}

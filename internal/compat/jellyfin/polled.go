@@ -1,7 +1,10 @@
 package jellyfin
 
 import (
+	"crypto/sha256"
 	"net/http"
+
+	"uuid"
 
 	"github.com/maverickman79/reelix/internal/repository"
 )
@@ -20,17 +23,32 @@ import (
 // dependency must not run the other way for the sake of one header name.
 const requestIDHeader = "X-Request-ID"
 
-// handleDisplayPreferences serves GET /DisplayPreferences/default.
+// handleDisplayPreferences serves GET /DisplayPreferences/{prefsId}.
 //
 // Reelix does not persist display preferences in 0.0.1. The recorded fields
 // are all present because the SDK's generated type declares them non-nullable,
 // and the values are the reference server's defaults — a client reading
 // skipForwardLength gets a sane skip button rather than a zero.
+//
+// The key is a PATH PARAMETER, not a fixed set. Probing the reference server
+// showed it answers 200 for any key at all, and — this is the part that
+// matters — that the key is CASE-SENSITIVE: /DisplayPreferences/default,
+// /DEFAULT and /Default are three different preference records with three
+// different ids. It is therefore registered as a parameter rather than as
+// literal alternatives, so the fold trie leaves its case alone. Registering
+// "default" as a literal would fold /displaypreferences/DEFAULT onto it and
+// silently merge records the reference keeps apart.
+//
+// Wholphin asks for "default"; jellyfin-web asks for "usersettings" and
+// blocks its entire post-login chain on the answer. Both arrive here.
+//
+// userId and client are not required, though every observed client sends
+// both and the reference answers 400 without them. Reelix is deliberately the
+// more lenient of the two: accepting a request the reference would reject
+// cannot break a client, and rejecting one it accepts can.
 func (a *API) handleDisplayPreferences(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, r, http.StatusOK, displayPreferences{
-		// Stable across calls without storing anything, and opaque: the
-		// client only ever echoes it back.
-		ID:                 compatID(userFrom(r.Context()).ID),
+		ID:                 displayPreferencesID(r.PathValue("prefsId")),
 		SortBy:             "SortName",
 		RememberIndexing:   false,
 		PrimaryImageHeight: 250,
@@ -52,6 +70,35 @@ func (a *API) handleDisplayPreferences(w http.ResponseWriter, r *http.Request) {
 		// answer belong to the question it asked.
 		Client: r.URL.Query().Get("client"),
 	})
+}
+
+// displayPreferencesID derives the opaque id a preferences record is returned
+// under.
+//
+// The reference server derives this from the key by some hash that is NOT a
+// plain MD5 of it — that was tested and ruled out. It is deliberately NOT
+// reproduced here. Working out the exact algorithm would mean reconstructing a
+// server-side implementation detail, which is the wrong side of the clean-room
+// rule in CLAUDE.md, and nothing needs the exact bytes: the client treats this
+// value as opaque and only ever echoes it back.
+//
+// What IS reproduced is every observable property the probe established:
+//
+//   - stable across calls, so a polling client is not told each time that its
+//     preferences were replaced
+//   - distinct per key, so "default" and "usersettings" cannot collide
+//   - identical across users, which the reference confirms — the same key
+//     returns the same id for two different userIds
+//   - shaped like a UUID, because clients parse it as one
+//
+// The namespace makes the digest specific to this use, so an id here can
+// never coincide with one derived elsewhere from the same key.
+func displayPreferencesID(key string) string {
+	sum := sha256.Sum256([]byte("reelix/displaypreferences\x00" + key))
+
+	var id uuid.UUID
+	copy(id[:], sum[:])
+	return compatID(id)
 }
 
 // handleUserImage serves GET /UserImage.

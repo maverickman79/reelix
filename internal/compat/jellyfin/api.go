@@ -77,13 +77,22 @@ func (a *API) registerCompatRoutes(mux *routeTable) {
 	mux.handle("POST /Users/AuthenticateByName", a.handleAuthenticateByName)
 	mux.handle("GET /Users/Me", a.requireAuth(a.handleUsersMe))
 
+	// Two spellings of the same report. Wholphin uses the bare one with query
+	// parameters; jellyfin-web uses /Full with a JSON body. A real server
+	// serves both.
 	mux.handle("POST /Sessions/Capabilities", a.requireAuth(a.handleSessionCapabilities))
+	mux.handle("POST /Sessions/Capabilities/Full", a.requireAuth(a.handleSessionCapabilitiesFull))
 
 	// Held open for the life of the connection; see socket.go.
 	mux.handle("GET /socket", a.requireAuth(a.handleSocket))
 
 	// Polled on the home screen. Empty, but never a 404; see polled.go.
-	mux.handle("GET /DisplayPreferences/default", a.requireAuth(a.handleDisplayPreferences))
+	//
+	// The preferences key is a parameter, not a fixed set: the reference
+	// answers any key, and answers each casing of one as a separate record.
+	// Wholphin asks for "default", jellyfin-web for "usersettings", and
+	// jellyfin-web will not render a page until it gets an answer.
+	mux.handle("GET /DisplayPreferences/{prefsId}", a.requireAuth(a.handleDisplayPreferences))
 	mux.handle("GET /UserImage", a.requireAuth(a.handleUserImage))
 	mux.handle("GET /UserItems/Resume", a.requireAuth(a.handleResumeItems))
 	mux.handle("GET /Items/Latest", a.requireAuth(a.handleLatestItems))
@@ -239,6 +248,17 @@ func remoteAddr(r *http.Request) string {
 // arrays non-nullable — a null where a list is expected is a hard client-side
 // exception, which is exactly the failure mode the constitution warns about.
 func emptyStrings() []string { return []string{} }
+
+// nonNil returns s, or an empty slice when s is nil.
+//
+// For values going INTO the database rather than out to a client: the session
+// capability columns are NOT NULL, and a nil slice binds as SQL NULL.
+func nonNil(s []string) []string {
+	if s == nil {
+		return emptyStrings()
+	}
+	return s
+}
 
 // emptyList returns a non-nil empty slice for heterogeneous arrays, for the
 // same reason as emptyStrings.
