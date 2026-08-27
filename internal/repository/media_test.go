@@ -673,3 +673,143 @@ func equalStrings(a, b []string) bool {
 	}
 	return true
 }
+
+// TestStreamMetadataRoundTrip proves every 0.0.2 column survives a write and a
+// read, independently of anything the compatibility layer does with it.
+//
+// The compat fixture suite seeds its own streams, so it can only ever show
+// that the DTO renders what it was handed. This is the test that shows the
+// value reaches the database and comes back unchanged.
+func TestStreamMetadataRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	pool := migratedDB(t)
+	media := repository.NewMediaRepository(pool)
+	libraryID := seedLibrary(t, ctx, repository.NewLibraryRepository(pool))
+
+	item := domain.MediaItem{LibraryID: libraryID, Kind: domain.MediaItemKindMovie,
+		Title: "Fight Club", SourcePath: "/media/movies/Fight Club (1999).mkv"}
+	if err := media.CreateItem(ctx, &item); err != nil {
+		t.Fatalf("CreateItem: %v", err)
+	}
+	file := domain.MediaFile{
+		MediaItemID: item.ID,
+		Path:        "/media/movies/Fight Club (1999).mkv",
+		Filename:    "Fight Club (1999).mkv",
+		SizeBytes:   81_604_378_624,
+	}
+	if err := media.UpsertFile(ctx, &file); err != nil {
+		t.Fatalf("UpsertFile: %v", err)
+	}
+
+	// One stream of each kind, each carrying the fields that kind actually
+	// has, with the three dispositions set differently so a transposition
+	// between them cannot pass.
+	want := []domain.MediaStream{
+		{
+			StreamIndex: 0, Kind: domain.StreamKindVideo, Codec: ptr("hevc"),
+			Width: ptr(3840), Height: ptr(2160),
+			Language: ptr("eng"), Profile: ptr("Main 10"), Level: ptr(153),
+			PixelFormat:      ptr("yuv420p10le"),
+			AverageFrameRate: ptr(23.976023976023978),
+			RealFrameRate:    ptr(23.976023976023978),
+			IsDefault:        true,
+		},
+		{
+			StreamIndex: 1, Kind: domain.StreamKindAudio, Codec: ptr("dts"),
+			Channels: ptr(6), Language: ptr("eng"), Title: ptr("DTS-HD MA 5.1"),
+			Profile: ptr("DTS-HD MA"), IsDefault: true,
+		},
+		{
+			StreamIndex: 2, Kind: domain.StreamKindSubtitle, Codec: ptr("subrip"),
+			Language: ptr("eng"), Title: ptr("SDH"),
+			IsForced: true, IsHearingImpaired: true,
+		},
+		{
+			// A track the container told us nothing about. Every nullable
+			// column must come back null rather than as a zero value.
+			StreamIndex: 3, Kind: domain.StreamKindSubtitle, Codec: ptr("subrip"),
+		},
+	}
+	if err := media.ReplaceStreams(ctx, file.ID, want); err != nil {
+		t.Fatalf("ReplaceStreams: %v", err)
+	}
+
+	got, err := media.ListStreams(ctx, file.ID)
+	if err != nil {
+		t.Fatalf("ListStreams: %v", err)
+	}
+	if len(got) != len(want) {
+		t.Fatalf("ListStreams returned %d streams, want %d", len(got), len(want))
+	}
+
+	for i := range want {
+		w, g := want[i], got[i]
+
+		eqStr(t, i, "language", w.Language, g.Language)
+		eqStr(t, i, "title", w.Title, g.Title)
+		eqStr(t, i, "profile", w.Profile, g.Profile)
+		eqStr(t, i, "pixel_format", w.PixelFormat, g.PixelFormat)
+		eqInt(t, i, "level", w.Level, g.Level)
+		eqFloat(t, i, "avg_frame_rate", w.AverageFrameRate, g.AverageFrameRate)
+		eqFloat(t, i, "real_frame_rate", w.RealFrameRate, g.RealFrameRate)
+
+		if w.IsDefault != g.IsDefault {
+			t.Errorf("stream %d is_default = %v, want %v", i, g.IsDefault, w.IsDefault)
+		}
+		if w.IsForced != g.IsForced {
+			t.Errorf("stream %d is_forced = %v, want %v", i, g.IsForced, w.IsForced)
+		}
+		if w.IsHearingImpaired != g.IsHearingImpaired {
+			t.Errorf("stream %d is_hearing_impaired = %v, want %v",
+				i, g.IsHearingImpaired, w.IsHearingImpaired)
+		}
+	}
+
+	// The unlabelled track specifically: NOT NULL DEFAULT false on the
+	// dispositions must not leak into the nullable columns beside them.
+	blank := got[3]
+	if blank.Language != nil || blank.Title != nil || blank.Profile != nil ||
+		blank.Level != nil || blank.PixelFormat != nil ||
+		blank.AverageFrameRate != nil || blank.RealFrameRate != nil {
+		t.Errorf("an untagged track came back with values: %+v", blank)
+	}
+	if blank.IsDefault || blank.IsForced || blank.IsHearingImpaired {
+		t.Errorf("an untagged track came back flagged: %+v", blank)
+	}
+}
+
+func eqStr(t *testing.T, i int, field string, want, got *string) {
+	t.Helper()
+	switch {
+	case want == nil && got != nil:
+		t.Errorf("stream %d %s = %q, want null", i, field, *got)
+	case want != nil && got == nil:
+		t.Errorf("stream %d %s = null, want %q", i, field, *want)
+	case want != nil && *want != *got:
+		t.Errorf("stream %d %s = %q, want %q", i, field, *got, *want)
+	}
+}
+
+func eqInt(t *testing.T, i int, field string, want, got *int) {
+	t.Helper()
+	switch {
+	case want == nil && got != nil:
+		t.Errorf("stream %d %s = %d, want null", i, field, *got)
+	case want != nil && got == nil:
+		t.Errorf("stream %d %s = null, want %d", i, field, *want)
+	case want != nil && *want != *got:
+		t.Errorf("stream %d %s = %d, want %d", i, field, *got, *want)
+	}
+}
+
+func eqFloat(t *testing.T, i int, field string, want, got *float64) {
+	t.Helper()
+	switch {
+	case want == nil && got != nil:
+		t.Errorf("stream %d %s = %v, want null", i, field, *got)
+	case want != nil && got == nil:
+		t.Errorf("stream %d %s = null, want %v", i, field, *want)
+	case want != nil && *want != *got:
+		t.Errorf("stream %d %s = %v, want %v", i, field, *got, *want)
+	}
+}

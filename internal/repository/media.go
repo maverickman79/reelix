@@ -28,7 +28,9 @@ const (
 	fileColumns = `id, media_item_id, path, filename, size_bytes, container,
 	               duration_seconds, probed_at, created_at, updated_at`
 	streamColumns = `id, media_file_id, stream_index, kind, codec, width, height,
-	                 channels, bit_rate`
+	                 channels, bit_rate, language, title, profile, level,
+	                 pixel_format, avg_frame_rate, real_frame_rate,
+	                 is_default, is_forced, is_hearing_impaired`
 )
 
 // CreateItem inserts a media item, assigning its id and timestamps.
@@ -197,8 +199,12 @@ func (r *MediaRepository) ReplaceStreams(ctx context.Context, fileID uuid.UUID, 
 
 	const q = `
 		INSERT INTO media_streams (id, media_file_id, stream_index, kind, codec,
-		                           width, height, channels, bit_rate)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+		                           width, height, channels, bit_rate,
+		                           language, title, profile, level, pixel_format,
+		                           avg_frame_rate, real_frame_rate,
+		                           is_default, is_forced, is_hearing_impaired)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+		        $15, $16, $17, $18, $19)`
 
 	for i := range streams {
 		s := &streams[i]
@@ -206,7 +212,10 @@ func (r *MediaRepository) ReplaceStreams(ctx context.Context, fileID uuid.UUID, 
 		s.MediaFileID = fileID
 
 		if _, err := r.q.Exec(ctx, q, s.ID, s.MediaFileID, s.StreamIndex, s.Kind,
-			s.Codec, s.Width, s.Height, s.Channels, s.BitRate); err != nil {
+			s.Codec, s.Width, s.Height, s.Channels, s.BitRate,
+			s.Language, s.Title, s.Profile, s.Level, s.PixelFormat,
+			s.AverageFrameRate, s.RealFrameRate,
+			s.IsDefault, s.IsForced, s.IsHearingImpaired); err != nil {
 			return mapError("replacing media streams", err)
 		}
 	}
@@ -228,7 +237,10 @@ func (r *MediaRepository) ListStreams(ctx context.Context, fileID uuid.UUID) ([]
 	for rows.Next() {
 		var s domain.MediaStream
 		if err := rows.Scan(&s.ID, &s.MediaFileID, &s.StreamIndex, &s.Kind, &s.Codec,
-			&s.Width, &s.Height, &s.Channels, &s.BitRate); err != nil {
+			&s.Width, &s.Height, &s.Channels, &s.BitRate,
+			&s.Language, &s.Title, &s.Profile, &s.Level, &s.PixelFormat,
+			&s.AverageFrameRate, &s.RealFrameRate,
+			&s.IsDefault, &s.IsForced, &s.IsHearingImpaired); err != nil {
 			return nil, mapError("listing media streams", err)
 		}
 		out = append(out, s)

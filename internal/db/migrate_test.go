@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 	"uuid"
 )
 
@@ -310,5 +311,134 @@ func TestStdlibUUIDRoundTrip(t *testing.T) {
 	}
 	if text[14] != '7' {
 		t.Errorf("uuid %s is not version 7", text)
+	}
+}
+
+// TestStreamMetadataMigrationClearsProbedAt pins the re-probe trigger.
+//
+// Migration 6 adds columns that are empty for every row already in the table,
+// and nothing on disk changes to announce that: neither size nor mtime moves,
+// so the scanner's ordinary change detection would never re-probe. Clearing
+// probed_at is the whole mechanism, and it is easy for a later session to
+// remove it while adding a column, leaving a library that reads as probed and
+// carries no track metadata.
+//
+// The migration is applied here in two halves — everything up to 5, then 6 —
+// so there is a file row in place, with a probed_at, for 6 to act on.
+func TestStreamMetadataMigrationClearsProbedAt(t *testing.T) {
+	ctx := context.Background()
+	pool := scratchDB(t)
+
+	migrations, err := loadMigrations()
+	if err != nil {
+		t.Fatalf("loadMigrations: %v", err)
+	}
+
+	const streamMetadataVersion = 6
+
+	var upTo, streamMetadata []Migration
+	for _, m := range migrations {
+		if m.Version < streamMetadataVersion {
+			upTo = append(upTo, m)
+		} else if m.Version == streamMetadataVersion {
+			streamMetadata = append(streamMetadata, m)
+		}
+	}
+	if len(streamMetadata) != 1 {
+		t.Fatalf("expected exactly one migration at version %d, found %d",
+			streamMetadataVersion, len(streamMetadata))
+	}
+
+	for _, m := range upTo {
+		if _, err := pool.Exec(ctx, m.SQL); err != nil {
+			t.Fatalf("applying migration %d: %v", m.Version, err)
+		}
+	}
+
+	// A library, an item and a file that has already been probed — the state
+	// every existing installation is in.
+	var libraryID, itemID, fileID string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO libraries (id, name, kind, created_at, updated_at)
+		VALUES (gen_random_uuid(), 'Movies', 'movie', now(), now())
+		RETURNING id`).Scan(&libraryID); err != nil {
+		t.Fatalf("seeding library: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO media_items (id, library_id, kind, title, source_path,
+		                         created_at, updated_at)
+		VALUES (gen_random_uuid(), $1, 'movie', 'Fight Club', '/media/fc.mkv',
+		        now(), now())
+		RETURNING id`, libraryID).Scan(&itemID); err != nil {
+		t.Fatalf("seeding item: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO media_files (id, media_item_id, path, filename, size_bytes,
+		                         container, duration_seconds, probed_at,
+		                         created_at, updated_at)
+		VALUES (gen_random_uuid(), $1, '/media/fc.mkv', 'fc.mkv', 81604378624,
+		        'matroska,webm', 8340.0, now(), now(), now())
+		RETURNING id`, itemID).Scan(&fileID); err != nil {
+		t.Fatalf("seeding file: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO media_streams (id, media_file_id, stream_index, kind, codec)
+		VALUES (gen_random_uuid(), $1, 0, 'video', 'hevc')`, fileID); err != nil {
+		t.Fatalf("seeding stream: %v", err)
+	}
+
+	if _, err := pool.Exec(ctx, streamMetadata[0].SQL); err != nil {
+		t.Fatalf("applying migration %d: %v", streamMetadataVersion, err)
+	}
+
+	var probedAt *time.Time
+	if err := pool.QueryRow(ctx,
+		`SELECT probed_at FROM media_files WHERE id = $1`, fileID).Scan(&probedAt); err != nil {
+		t.Fatalf("reading probed_at: %v", err)
+	}
+	if probedAt != nil {
+		t.Errorf("probed_at is %v after migration %d; the library will never be re-probed",
+			*probedAt, streamMetadataVersion)
+	}
+
+	// Clearing probed_at must not have thrown away what the file already
+	// knows. Between the migration and the scan, browsing and playback still
+	// depend on the container and the duration, and the old stream rows stay
+	// until their replacements are ready.
+	var container *string
+	var duration *float64
+	if err := pool.QueryRow(ctx,
+		`SELECT container, duration_seconds FROM media_files WHERE id = $1`,
+		fileID).Scan(&container, &duration); err != nil {
+		t.Fatalf("reading file: %v", err)
+	}
+	if container == nil || *container != "matroska,webm" {
+		t.Errorf("container = %v, want matroska,webm — playback breaks without it", container)
+	}
+	if duration == nil || *duration != 8340.0 {
+		t.Errorf("duration = %v, want 8340", duration)
+	}
+
+	var streams int
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM media_streams WHERE media_file_id = $1`, fileID).Scan(&streams); err != nil {
+		t.Fatalf("counting streams: %v", err)
+	}
+	if streams != 1 {
+		t.Errorf("migration left %d stream rows, want 1 — the old set must survive until the re-scan", streams)
+	}
+
+	// The dispositions are NOT NULL DEFAULT false, so the pre-existing row
+	// must have acquired real falses rather than nulls.
+	var isDefault, isForced, isHearingImpaired bool
+	if err := pool.QueryRow(ctx, `
+		SELECT is_default, is_forced, is_hearing_impaired
+		FROM media_streams WHERE media_file_id = $1`, fileID).
+		Scan(&isDefault, &isForced, &isHearingImpaired); err != nil {
+		t.Fatalf("reading dispositions: %v", err)
+	}
+	if isDefault || isForced || isHearingImpaired {
+		t.Errorf("a pre-existing stream defaulted to flagged: default:%v forced:%v hearing:%v",
+			isDefault, isForced, isHearingImpaired)
 	}
 }

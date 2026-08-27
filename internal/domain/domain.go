@@ -212,8 +212,13 @@ type MediaFile struct {
 
 // MediaStream is one track within a MediaFile.
 //
-// Width and Height are video-only; Channels is audio-only. The alternative,
-// a table per stream kind, buys nothing at this size.
+// Width, Height, Profile, Level, PixelFormat and the frame rates are
+// video-only; Channels is audio-only. The alternative, a table per stream
+// kind, buys nothing at this size.
+//
+// Everything here is as ffprobe reported it. Language is an ISO 639-2 code,
+// not a display name: turning "eng" into "English" is presentation, and it
+// happens at the boundary that has an audience to present to.
 type MediaStream struct {
 	ID          uuid.UUID
 	MediaFileID uuid.UUID
@@ -224,4 +229,19 @@ type MediaStream struct {
 	Height      *int
 	Channels    *int
 	BitRate     *int64
+
+	Language    *string
+	Title       *string
+	Profile     *string
+	Level       *int
+	PixelFormat *string
+
+	AverageFrameRate *float64
+	RealFrameRate    *float64
+
+	// Dispositions the container set. Booleans rather than pointers: ffprobe
+	// always reports them, so false means "not flagged" rather than unknown.
+	IsDefault         bool
+	IsForced          bool
+	IsHearingImpaired bool
 }
