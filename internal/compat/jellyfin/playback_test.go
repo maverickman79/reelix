@@ -112,6 +112,7 @@ func seedPlayable(t *testing.T, h *harness, size int64, markers map[int64]int) p
 	eng, profile, pixFmt := "eng", "High", "yuv420p"
 	audioTitle, level := "Surround AC3 5.1", 40
 	frameRate := 23.976023976023978
+	layout, sampleRate := "5.1(side)", 48000
 
 	if err := media.ReplaceStreams(ctx, file.ID, []domain.MediaStream{
 		{
@@ -124,6 +125,7 @@ func seedPlayable(t *testing.T, h *harness, size int64, markers map[int64]int) p
 		{
 			StreamIndex: 1, Kind: domain.StreamKindAudio, Codec: &audio,
 			Channels: &channels, Language: &eng, Title: &audioTitle,
+			ChannelLayout: &layout, SampleRate: &sampleRate,
 			IsDefault: true,
 		},
 	}); err != nil {

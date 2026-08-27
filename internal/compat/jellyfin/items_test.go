@@ -105,6 +105,9 @@ func seedMedia(t *testing.T, h *harness) seededMedia {
 		eng, profile, pixFmt := "eng", "High", "yuv420p"
 		audioTitle, level := "Surround AC3 5.1", 40
 		frameRate := 23.976023976023978
+		// The qualifier ffprobe reports for a great many real files; the
+		// boundary is what strips it.
+		layout, sampleRate := "5.1(side)", 48000
 
 		streams := []domain.MediaStream{
 			{
@@ -118,6 +121,7 @@ func seedMedia(t *testing.T, h *harness) seededMedia {
 			{
 				StreamIndex: 1, Kind: domain.StreamKindAudio, Codec: &audio,
 				Channels: &channels, Language: &eng, Title: &audioTitle,
+				ChannelLayout: &layout, SampleRate: &sampleRate,
 				IsDefault: true,
 			},
 		}
@@ -342,6 +346,7 @@ func TestItemDetailCarriesThePlayableFile(t *testing.T) {
 			AspectRatio          string
 			IsTextSubtitleStream bool
 			VideoRange           string
+			ChannelLayout        *string
 		}
 	}
 	if err := json.Unmarshal(raw, &got); err != nil {
@@ -440,9 +445,22 @@ func TestItemDetailCarriesThePlayableFile(t *testing.T) {
 	// The seeded track is tagged "eng" and titled "Surround AC3 5.1", so the
 	// label leads with the title, names the language, and drops the channel
 	// layout the title already carries.
-	if audio := got.MediaStreams[1]; audio.Type != "Audio" ||
+	audio := got.MediaStreams[1]
+	if audio.Type != "Audio" ||
 		audio.DisplayTitle != "Surround AC3 5.1 - English - Dolby Digital+ - Default" {
 		t.Errorf("second stream = %+v, want the audio", audio)
+	}
+
+	// The stored layout is "5.1(side)" and the wire must carry "5.1".
+	// Asserted on the response rather than on displayChannelLayout alone,
+	// because a DTO that stopped calling the normaliser would keep that
+	// unit test green while sending a string Findroid classifies as stereo.
+	switch {
+	case audio.ChannelLayout == nil:
+		t.Error("audio ChannelLayout is null — the stored \"5.1(side)\" must reach the wire as \"5.1\"")
+	case *audio.ChannelLayout != "5.1":
+		t.Errorf("audio ChannelLayout = %q, want \"5.1\" — the stored \"5.1(side)\" "+
+			"must be normalised at the boundary", *audio.ChannelLayout)
 	}
 	if sub := got.MediaStreams[2]; sub.Type != "Subtitle" || !sub.IsTextSubtitleStream {
 		t.Errorf("third stream = %+v, want a text subtitle", sub)
@@ -839,5 +857,70 @@ func TestBrowseRoutesRequireAToken(t *testing.T) {
 				t.Errorf("without a token: %d, want 401", resp.StatusCode)
 			}
 		})
+	}
+}
+
+// TestNoStreamFieldSerialisesAsTheStringNull is the regression test for the
+// fault that started this.
+//
+// Wholphin composes its own track label from individual fields rather than
+// from DisplayTitle, and builds it with a list that does not drop nulls — so a
+// field Reelix answers null for arrives at a user as the literal four
+// characters "null". The Singers rendered as "English DD+ null (null)" on real
+// hardware while our DisplayTitle for the same stream read
+// "English - Dolby Digital+ - 5.1 - Default".
+//
+// This walks every stream field a client is known to concatenate without a
+// null check and fails if any is null. It cannot cover fields no client reads
+// today; what it does cover is the ones a real client was observed to print.
+func TestNoStreamFieldSerialisesAsTheStringNull(t *testing.T) {
+	h := newHarness(t)
+	seeded := seedMedia(t, h)
+	token := h.login()
+
+	raw := h.bodyOf(h.do(http.MethodGet,
+		"/Items/"+compatID(seeded.items[0].ID), token, nil))
+
+	var body struct {
+		MediaStreams []map[string]any `json:"MediaStreams"`
+	}
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatalf("decoding item: %v", err)
+	}
+	if len(body.MediaStreams) == 0 {
+		t.Fatal("no streams to check")
+	}
+
+	// Fields Wholphin concatenates directly. ChannelLayout is audio-only;
+	// the Localized* strings are read whenever the matching flag is set, and
+	// Reelix sets IsDefault from the container, so they must always be there.
+	concatenated := map[string][]string{
+		"Audio": {
+			"ChannelLayout",
+			"LocalizedDefault", "LocalizedForced", "LocalizedExternal",
+		},
+		"Subtitle": {
+			"LocalizedDefault", "LocalizedForced", "LocalizedExternal",
+			"LocalizedHearingImpaired",
+		},
+		"Video": {
+			"LocalizedDefault", "LocalizedForced", "LocalizedExternal",
+		},
+	}
+
+	for i, stream := range body.MediaStreams {
+		kind, _ := stream["Type"].(string)
+
+		for _, field := range concatenated[kind] {
+			value, present := stream[field]
+			if !present {
+				t.Errorf("stream %d (%s): %s is missing entirely", i, kind, field)
+				continue
+			}
+			if value == nil {
+				t.Errorf("stream %d (%s): %s is null — a client that concatenates it "+
+					"without a null check prints the string \"null\" to a user", i, kind, field)
+			}
+		}
 	}
 }

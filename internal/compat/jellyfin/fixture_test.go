@@ -164,88 +164,129 @@ func because(reason string) allowance {
 //
 // An entry is retired ONLY when Reelix emits the field. The compat tests seed
 // their own streams, so removing an entry also means seeding a value for it —
-// and that seed is not the justification. For the 0.0.2 stream metadata the
+// and that seed is not the justification. For the stream metadata the
 // justification is that the field travels ffprobe -> schema -> DTO, proved
 // away from this package by TestParseProbeOutput (internal/media),
 // TestStreamMetadataRoundTrip (internal/repository),
 // TestScanPersistsStreamMetadata (internal/service) and
 // TestStreamMetadataMigrationClearsProbedAt (internal/db). A future retirement
 // with no such proof behind it is this list eroding.
+//
+// # Every reason is marked with the evidence behind it
+//
+// A full audit of this list found that two reasons were written from
+// assumption and one was flatly false about a client's internals. The pattern
+// was exact, and it is the rule to carry forward:
+//
+//	A reason that states a fact about REELIX held every time.
+//	A reason that states a fact about SOMEONE ELSE'S SOFTWARE was
+//	where every error was.
+//
+// So each entry below carries a marker:
+//
+//	[us]       a checkable statement about Reelix's own code or schema.
+//	[capture]  read off a recorded response in testdata.
+//	[client]   read in a client's source; the file is named.
+//	[unread]   no known client reads the field, so the allowance costs
+//	           nothing until one does.
+//
+// A reason with no marker has not been audited. Do not add one.
+//
+// Where a client is named, "null-safe" means the read goes through a null
+// check and a null omits a row rather than rendering. That distinction is the
+// difference between an allowance that is free and one that puts the string
+// "null" in front of a user — see TestNoStreamFieldSerialisesAsTheStringNull.
 var absentInReelix = map[string]allowance{
-	// Metadata scraping is excluded from 0.0.1, so nothing describes a movie
+	// Metadata scraping is not implemented, so nothing describes a movie
 	// beyond what its filename and container say.
-	"$..Overview":        because("no metadata provider in 0.0.1; the overview is genuinely unknown"),
-	"$..CommunityRating": because("no metadata provider in 0.0.1; a fabricated 0 would render as a zero-star rating"),
-	"$..CriticRating":    because("no metadata provider in 0.0.1"),
-	"$..OfficialRating":  because("no metadata provider in 0.0.1"),
-	"$..PremiereDate":    because("no metadata provider in 0.0.1; a fabricated date would render as year 1"),
-	"$..OriginalTitle":   because("no metadata provider in 0.0.1; only the filename-derived title is known"),
-	"$..ProductionYear":  because("parsed from the filename, so null when the filename carries no year"),
+	"$..Overview":       because("[us] no metadata provider; the overview is genuinely unknown"),
+	"$..CriticRating":   because("[us] no metadata provider"),
+	"$..OfficialRating": because("[us] no metadata provider"),
+	"$..OriginalTitle":  because("[us] no metadata provider; only the filename-derived title is known"),
+	"$..ProductionYear": because("[us] parsed from the filename, so null when the filename carries no year"),
 
-	// Artwork downloading is excluded, so there is no image to measure.
-	"$..PrimaryImageAspectRatio": because("no artwork in 0.0.1, so there is no primary image to have a ratio"),
+	// These two are null rather than zero deliberately. Both clients read
+	// them through a null check, so null omits the element — and a fabricated
+	// value would NOT be omitted, it would render as a real rating or date.
+	"$..CommunityRating": because("[us] no metadata provider [client] Wholphin Formatting.kt renders any non-null value, so a fabricated 0 would show as zero stars"),
+	"$..PremiereDate":    because("[us] no metadata provider [client] Wholphin ScreensaverService.kt renders any non-null value, so a fabricated date would show as a real one"),
+
+	// Artwork downloading is not implemented, so there is no image to measure.
+	"$..PrimaryImageAspectRatio": because("[us] no artwork, so no primary image to have a ratio [client] Wholphin BaseItem.kt guards with takeIf { it > 0 }"),
 
 	// Stream metadata the scanner still does not probe.
 	//
-	// Language, Title, Profile, PixelFormat and the two measured frame rates
-	// were listed here until 0.0.2 and are gone because Reelix emits them,
-	// not because this list was relaxed. See the note above absentInReelix.
-	"$..ChannelLayout":  because("derived from the channel count for DisplayTitle only; the column is not stored"),
-	"$..SampleRate":     because("the scanner does not record sample rate (0.0.3)"),
-	"$..BitDepth":       because("the scanner does not record bit depth (0.0.3)"),
-	"$..RefFrames":      because("the scanner does not record reference frames (0.0.3)"),
-	"$..NalLengthSize":  because("the scanner does not record NAL length size (0.0.3)"),
-	"$..TimeBase":       because("the scanner does not record the stream time base (0.0.3)"),
-	"$..ColorSpace":     because("the scanner does not record colour metadata (0.0.3)"),
-	"$..ColorTransfer":  because("the scanner does not record colour metadata (0.0.3)"),
-	"$..ColorPrimaries": because("the scanner does not record colour metadata (0.0.3)"),
-	"$..IsAVC":          because("the scanner does not record whether a stream is AVC (0.0.3)"),
-	"$..IsAnamorphic":   because("the scanner does not record anamorphic flags (0.0.3)"),
-	"$..BitRate":        because("ffprobe reports no bitrate for some streams; null rather than a guess"),
+	// Language, Title, Profile, PixelFormat, the two measured frame rates,
+	// ChannelLayout, SampleRate and the five Localized strings were all
+	// listed here once and are gone because Reelix emits them, not because
+	// this list was relaxed.
+	//
+	// Every entry below is read by Wholphin in ItemDetailsDialogInfo.kt
+	// through `stream.field?.let { ... }`, or by nothing at all. A null omits
+	// a row from a details dialog; none of them is concatenated into a label.
+	// That was ASSUMED until the audit and is now checked.
+	"$..BitDepth":       because("[us] the scanner does not record bit depth [client] Wholphin ItemDetailsDialogInfo.kt:382, null-safe"),
+	"$..RefFrames":      because("[us] the scanner does not record reference frames [client] Wholphin ItemDetailsDialogInfo.kt:410, null-safe"),
+	"$..NalLengthSize":  because("[us] the scanner does not record NAL length size [client] Wholphin ItemDetailsDialogInfo.kt:411, null-safe"),
+	"$..ColorSpace":     because("[us] the scanner does not record colour metadata [client] Wholphin ItemDetailsDialogInfo.kt:406, null-safe"),
+	"$..ColorTransfer":  because("[us] the scanner does not record colour metadata [client] Wholphin ItemDetailsDialogInfo.kt:407, null-safe"),
+	"$..ColorPrimaries": because("[us] the scanner does not record colour metadata [client] Wholphin ItemDetailsDialogInfo.kt:408, null-safe"),
+	"$..IsAnamorphic":   because("[us] the scanner does not record anamorphic flags [client] Wholphin ItemDetailsDialogInfo.kt:381, null-safe"),
+	"$..BitRate":        because("[us] ffprobe reports no bitrate for some streams; null rather than a guess [client] Wholphin ItemDetailsDialogInfo.kt:442, null-safe"),
+
+	"$..TimeBase": because("[us] the scanner does not record the stream time base [unread] neither Wholphin nor Findroid reads it"),
+	"$..IsAVC":    because("[us] the scanner does not record whether a stream is AVC [unread] neither Wholphin nor Findroid reads it"),
 
 	// Reelix records avg_frame_rate and r_frame_rate, both measured. It does
 	// not emit a reference rate: the captures show all three equal, but that
 	// is constant-frame-rate content agreeing with itself, and what the
 	// reference server means by "reference" is not something the recorded
 	// traffic reveals. A value that happens to be right for CFR is a guess.
-	"$..ReferenceFrameRate": because("Reelix stores two measured frame rates and will not guess a third"),
+	"$..ReferenceFrameRate": because("[us] Reelix stores two measured frame rates and will not guess a third [unread] neither Wholphin nor Findroid reads it"),
 
-	// Level is emitted for video, where ffprobe reports one. The recorded
-	// server sent 0 on audio and subtitle streams, which is a non-nullable
-	// C# int with nothing in it rather than a measurement, so those two
-	// stay null instead of being filled with zeroes to match.
-	"$..MediaStreams[Audio].Level":    because("ffprobe reports no codec level for an audio stream; the recorded 0 is a .NET default"),
-	"$..MediaStreams[Subtitle].Level": because("ffprobe reports no codec level for a subtitle stream; the recorded 0 is a .NET default"),
-	"$..LocalizedDefault":             because("Reelix does not localise track labels; the client has its own strings"),
-	"$..LocalizedExternal":            because("Reelix does not localise track labels"),
-	"$..LocalizedForced":              because("Reelix does not localise track labels"),
-	"$..LocalizedHearingImpaired":     because("Reelix does not localise track labels"),
-	"$..LocalizedUndefined":           because("Reelix does not localise track labels"),
+	// Level is emitted for video, where ffprobe reports one. The recording
+	// holds 0 on audio and subtitle streams. Reelix stores no level for
+	// those rather than writing a zero to match.
+	//
+	// An earlier version of these reasons explained the recorded 0 as "a
+	// .NET default". That was a guess about the reference server's
+	// implementation, unverifiable without reading source this project does
+	// not read, and the kind of guess that reads as established fact a few
+	// sessions later. Only the observation is stated now.
+	"$..MediaStreams[Audio].Level":    because("[us] ffprobe reports no codec level for an audio stream [capture] the recording holds 0 there [unread] no client reads a stream's level"),
+	"$..MediaStreams[Subtitle].Level": because("[us] ffprobe reports no codec level for a subtitle stream [capture] the recording holds 0 there [unread] no client reads a stream's level"),
 
-	// The reference server sent 0 for both on subtitle tracks — a
-	// non-nullable int with nothing in it, not a measurement. Reelix does
-	// not probe subtitle geometry and will not write zeroes to match. A
-	// video stream's dimensions are still required; this covers subtitles.
-	"$..MediaStreams[Subtitle].Width":  because("the scanner does not probe subtitle geometry; the recorded 0 is a .NET default"),
-	"$..MediaStreams[Subtitle].Height": because("the scanner does not probe subtitle geometry; the recorded 0 is a .NET default"),
+	// The recording holds 0 for both on subtitle tracks. Reelix does not
+	// probe subtitle geometry and will not write zeroes to match. A video
+	// stream's dimensions are still required; this covers subtitles only.
+	// The ".NET default" explanation that used to sit here was a guess about
+	// the reference server, and is gone for the same reason as above.
+	"$..MediaStreams[Subtitle].Width":  because("[us] the scanner does not probe subtitle geometry [capture] the recording holds 0 there"),
+	"$..MediaStreams[Subtitle].Height": because("[us] the scanner does not probe subtitle geometry [capture] the recording holds 0 there"),
 
-	// Playback state arrives with Step 7.
-	"$..LastPlayedDate": because("no playback state until Step 7; nothing has ever been played"),
+	// Playback state exists now, and this field is emitted whenever there is
+	// one. It is null only for an item nobody has played, which is what the
+	// compat tests seed.
+	//
+	// The reason here used to say "no playback state until Step 7". Step 7
+	// shipped; the entry survived and its reason described a world that had
+	// stopped existing. A stale reason is as misleading as a wrong one.
+	"$..LastPlayedDate": because("[us] emitted from playback state when present, null for an item never played [client] Wholphin LatestNextUpService.kt null-checks it"),
 
 	// A library is the top of the tree in Reelix.
-	"$..ParentId": because("Reelix has no folder above a library, and an invented root id would resolve to nothing"),
+	"$..ParentId": because("[us] no folder above a library, and an invented root id would resolve to nothing [client] neither Wholphin nor Findroid reads an item's parentId; every hit is a request parameter or the client's own config"),
 
 	// The constitution forbids returning filesystem layout.
-	"$..Path": because("the constitution forbids leaking filesystem paths through an API"),
+	"$..Path": because("[us] the constitution forbids leaking filesystem paths through an API [client] Wholphin SubtitleSearchUtils.kt and ItemDetailsDialogInfo.kt both read it null-safely"),
 }
 
 // dataObjects are recorded objects whose keys are data rather than schema.
 var dataObjects = map[string]allowance{
-	"$..ImageTags":           because("keyed by image id; requiring one would mean inventing an image Reelix cannot serve"),
-	"$..ImageBlurHashes":     because("keyed by image hash, for images Reelix does not have"),
-	"$..ProviderIds":         because("keyed by metadata provider, and 0.0.1 has none"),
-	"$..Trickplay":           because("keyed by resolution; trickplay is excluded from 0.0.1"),
-	"$..RequiredHttpHeaders": because("a header map, empty for a file Reelix serves directly"),
+	"$..ImageTags":           because("[us] keyed by image id; requiring one would mean inventing an image Reelix cannot serve [client] observed on hardware in 0.0.1, both clients draw a placeholder for an empty map"),
+	"$..ProviderIds":         because("[us] keyed by metadata provider, and Reelix has none [client] Wholphin reads it in one place, for external links it then omits"),
+	"$..Trickplay":           because("[us] keyed by resolution; trickplay is not implemented [client] Findroid fetches trickplay separately and treats an empty map as none"),
+	"$..ImageBlurHashes":     because("[us] keyed by image hash, for images Reelix does not have [unread] neither Wholphin nor Findroid reads it"),
+	"$..RequiredHttpHeaders": because("[us] a header map, empty for a file Reelix serves directly [unread] neither Wholphin nor Findroid reads it"),
 }
 
 // allowed reports whether path is covered by one of the named lists.
