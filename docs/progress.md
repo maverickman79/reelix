@@ -21,6 +21,120 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-26 — Step 5: compatibility discovery and auth
+
+**Completed:**
+- `internal/compat/jellyfin`: the first compatibility code. Handlers for
+  `/System/Info/Public`, `/System/Info`, `/Users/Public`,
+  `/QuickConnect/Enabled`, `/QuickConnect/Initiate`,
+  `/Users/AuthenticateByName`, `/Users/Me`, `/Sessions/Capabilities`.
+- **Fixture-comparison helper** (`fixture_test.go`), which Steps 6 and 7
+  depend on: `assertSuperset` walks a recorded response and the Reelix
+  response together, reporting every divergence with a `$.User.Policy.Field`
+  path. Reelix may add fields; it may never omit one.
+- `authheader.go`: parses `Authorization: MediaBrowser`,
+  `X-Emby-Authorization`, and `X-MediaBrowser-Token`.
+- `ids.go`: 32-char dashless lowercase hex at this boundary only.
+- `0004_sessions.sql`: `server_settings` (single row, seeded server id) and
+  `sessions` (native session/device record).
+- `internal/service/session.go`: `SessionService` — authenticate, resolve,
+  set capabilities.
+
+**Verified:**
+- `gofmt`, `go vet ./...` clean. 125 tests pass with a database; all
+  integration tests skip cleanly without `REELIX_TEST_DB_DSN`.
+- Every fixture for these routes passes the superset comparison: four
+  `/System/Info/Public` recordings, three `/Users/Me`, and the
+  `/Users/AuthenticateByName` response with its 42-field `Policy` and
+  15-field `Configuration`.
+- **The comparison was fault-injected to prove it works.** Renaming two JSON
+  tags produced exactly the expected failures —
+  `$.SessionInfo.LastPlaybackCheckIn: missing (recorded string)` and
+  `$.User.Policy.SyncPlayAccess: missing (recorded string)` — and the helper
+  has 20 of its own test cases covering the object, array, scalar, and null
+  rules.
+- `TestCapturedFlowInOrder` replays the recorded login sequence in call order.
+- The full flow reproduced by `curl` against the compose stack: discovery →
+  QuickConnect declined → authenticate → `/Users/Me` → `/System/Info` →
+  `/Sessions/Capabilities` 204, with a bogus token correctly rejected 401.
+  `LocalAddress` came back as `http://100.95.0.122:8080`, derived from the
+  Host header the client dialled.
+- A native `/api/v1` bearer token is rejected by the compatibility surface,
+  asserted by test — the two schemes are genuinely independent.
+- No credential reaches the logs: neither the access token, the raw
+  authorization header, the password, nor either stored hash, checked in both
+  the test harness and the live container logs.
+
+**In flight:**
+- Nothing in code. **Awaiting the hardware run:** Wholphin on the SK1 adding
+  the server and logging in. That is the completion criterion and cannot be
+  verified from here — `adb` is not installed on this machine.
+
+**Blocked:**
+- Nothing.
+
+**Next step:**
+- Hardware verification, then Step 6: user views, library items, item detail,
+  dashless ids, well-formed empty responses, and accepting the `/socket`
+  WebSocket.
+
+**Decisions made:**
+- **KNOWN RISK — the authorization header parser has no recorded reference.**
+  `redact.py` replaced every `Authorization` value in the capture with
+  "REDACTED", and `X-Emby-Authorization` and `X-MediaBrowser-Token` appear
+  nowhere in it at all. The parser was written from Jellyfin's published API
+  documentation and the format the Kotlin SDK is known to emit — permitted
+  sources, but not observed traffic. It is the single most likely piece of
+  this step to be subtly wrong, and it is the piece a login failure would
+  most plausibly come from. Its 25 unit cases cover quoted values containing
+  commas and equals signs, spacing and casing variation, unquoted values,
+  missing fields, and malformed input, but a passing test here is weaker
+  evidence than a passing fixture comparison elsewhere. If the SK1 fails to
+  log in, look here first. A future capture should preserve the header
+  structure while redacting only the token value.
+- **`/System/Info` is unvalidated and unexercised.** No fixture exists —
+  Wholphin never called it — so its shape comes from the published OpenAPI
+  specification alone and has never been compared against a real response.
+  Noted in the code as well as here. If a later client breaks somewhere
+  unexpected, this is the first place to look.
+- QuickConnect reports `false` and `/QuickConnect/Initiate` answers 401.
+  Reelix does not implement it, and advertising a flow that then fails in the
+  user's hands is worse than declining cleanly. **Wholphin's reaction to
+  `false` is unverified** — the reference server had the feature enabled, so
+  the capture only covers the enabled path. If the SK1 stalls at the login
+  screen rather than showing a username and password form, this is the second
+  place to look.
+- `/Users/Public` returns `[]`, matching the reference. It sends the client
+  to a credentials form, which is the only login Reelix supports, and avoids
+  disclosing account names to anyone who can reach the port.
+- `ProductName` stays "Jellyfin Server" because clients branch on it.
+  `ServerName`, which is what a user sees, is "Reelix".
+- `LocalAddress` is derived from the request's Host header. The listener
+  binds a port, not a hostname, and clients arrive by LAN address, tailnet
+  address, or hostname; what the client dialled is the only correct answer.
+- Sessions are keyed unique on (user_id, device_id), so re-authenticating
+  from one device replaces its session rather than adding a row per app
+  launch. The superseded token stops working, which is what "log in again"
+  should mean.
+- Sessions do not expire. Jellyfin's tokens do not either, and a television
+  client forced to re-authenticate unprompted reads as a broken server.
+- `User.Policy` is Reelix's single `is_admin` flag translated into the
+  closest Jellyfin representation, not a permission model Reelix implements.
+  Capabilities a client might use to hide UI are granted, because a client
+  that believes it may not play shows a broken library rather than an error.
+- Timestamps are formatted with .NET's seven fractional digits to match the
+  recorded responses exactly. No failure was observed from Go's default, but
+  matching removes a variable.
+- Filesystem paths in `/System/Info` are returned empty rather than real: the
+  constitution forbids leaking filesystem detail, and no client needs them.
+- The `api_key` query parameter is deliberately not accepted as a credential.
+  The access log records paths, and a query-string credential is far easier
+  to leak than a header.
+- Route matching is case-sensitive; ASP.NET's is not. Wholphin sends the
+  exact casing recorded in the capture, so this is correct for the milestone
+  gate. A client that lowercases its paths would 404. Known gap, not papered
+  over with a normalising layer nothing has needed yet.
+
 ## 2026-08-26 — Step 4: scanner and probe
 
 **Completed:**
