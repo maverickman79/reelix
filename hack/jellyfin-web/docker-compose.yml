@@ -1,0 +1,24 @@
+# jellyfin-web pointed at Reelix.
+#
+#   cd hack/jellyfin-web && docker compose up -d --build
+#   open http://100.95.0.122:8099/web/
+#
+# A standalone stack with its own project name, like the capture harness. It
+# shares no network, volume, or port with the application stack, and brings
+# nothing into it: Reelix is not modified, restarted, or configured for this.
+#
+# Nothing here is a deployment artifact. Reelix ships no web client.
+name: reelix-jellyfin-web
+
+services:
+  web:
+    build: .
+    container_name: reelix-jellyfin-web
+    environment:
+      # Where Reelix is. The default is the tailnet address the app publishes;
+      # a container reaches it fine.
+      REELIX_UPSTREAM: ${REELIX_UPSTREAM:-http://100.95.0.122:8080}
+    ports:
+      # Bound to the tailnet address so a laptop can drive it. Not 0.0.0.0.
+      - "100.95.0.122:${REELIX_WEB_PORT:-8099}:80"
+    restart: "no"
