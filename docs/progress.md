@@ -21,6 +21,119 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-27 — 0.0.2: the fields clients actually read, and an allowance audit
+
+**Completed:**
+- `channel_layout` and `sample_rate` probed, stored, and emitted; migration
+  `0007` with the same `probed_at` re-scan trigger migration 6 used.
+- `ChannelLayout` normalised at the compat boundary: stored `5.1(side)`
+  reaches the wire as `5.1`.
+- The five `Localized*` fields emitted as the constants the reference server
+  sends.
+- **Every allowance in `fixture_test.go` audited** and marked with the
+  evidence behind it.
+- `docs/compat-capture.md` gains "What the harness cannot prove".
+
+**Verified:**
+- `gofmt`, `go vet ./...` clean. Suite green with a database and without one.
+- **Fault-injected three times, each caught** (one only after closing a gap
+  the injection exposed — see below).
+- **Live**: migration 7 applied on restart, one scan re-probed all six files,
+  136 stream rows intact, 11 with a layout. The real library contains
+  `5.1(side)` — the exact value that would have mislabelled tracks.
+- **The Singers now returns** `ChannelLayout: "5.1"`, `SampleRate: 48000`,
+  `LocalizedDefault: "Default"`. Wholphin's own composition of those fields is
+  `English DD+ 5.1 (Default)`, against `English DD+ null (null)` before.
+
+**In flight:**
+- Nothing.
+
+**Blocked:**
+- Nothing.
+
+**Next step:**
+- Hardware: confirm on the Shield that The Singers reads
+  `English DD+ 5.1 (Default)`, and check Fight Club's picker while there.
+- Then case-insensitive route matching, still outstanding.
+
+**Decisions made:**
+
+- **A rule for future sessions, and the most reusable thing here.** Auditing
+  all 38 allowances found the pattern exactly:
+
+  > **A reason that states a fact about Reelix held every time. A reason that
+  > states a fact about someone else's software is where every error was.**
+
+  Claims about our own schema, our own code, our own constitution are
+  checkable in seconds and were all correct. Claims about how a client
+  behaves were written from how a client *ought* to behave, and three were
+  wrong. **When a justification depends on another program's internals, read
+  that program's source or mark the claim unverified.** Reading third-party
+  client source is explicitly permitted. Every entry now carries `[us]`,
+  `[capture]`, `[client]` with the file named, or `[unread]`; an unmarked
+  reason means unaudited.
+
+- **What the audit found:** one false reason (`Localized*` — "the client has
+  its own strings"; Wholphin prints whatever arrives), one stale reason
+  (`LastPlayedDate` still cited "Step 7" as future, months after it shipped),
+  and four inferential ones (`Level` ×2 and subtitle geometry ×2 explained a
+  recorded `0` as "a .NET default" — a guess about the reference server,
+  unverifiable without reading source this project does not read, and the
+  kind of guess that reads as established fact three sessions later). Only
+  the observation is stated now: the recording holds 0.
+
+- **Thirteen reasons were sound but unverified**, and are now checked: every
+  one is read by Wholphin through a null-safe `?.let`, so a null omits a row.
+  Six fields no client reads at all. That distinction — free allowance versus
+  one that puts "null" in front of a user — is what the audit was for.
+
+- **`sample_rate` is in scope though nothing implicated it.** The cost of a
+  migration is the re-scan, not the column, and that cost is identical for one
+  field or two. A real library is terabytes; re-probing it later to collect a
+  value ffprobe already returns, in a pass that has to happen anyway, is the
+  expensive choice. **This is prudent sequencing rather than scope creep
+  precisely because the field needs no new probe pass and no schema
+  decision** — a field needing either would not qualify, and this reasoning
+  should not be stretched to cover one that does.
+
+- **The layout is stored raw and normalised at the boundary**, the same
+  division as `DisplayTitle`: `5.1(side)` is a fact about the container, `5.1`
+  is a fact about Jellyfin clients. Findroid matches the string against
+  exactly `2.0`/`2.1`/`5.1`/`7.1` and sends anything else to its stereo arm,
+  so an unstripped qualifier labels a 5.1 track as 2.0 — **a confident wrong
+  answer nobody reports, which is worse than the visible `null` that started
+  this.**
+
+- **`DisplayTitle` still derives its layout from the channel count**, and this
+  is deliberate. The capture shows the reference server sending
+  `ChannelLayout: "stereo"` and `DisplayTitle: "Stereo"` for the same stream.
+  The two disagree on purpose and the count-derived form already reproduces
+  the capture. Pinned by a test so the apparent inconsistency is not tidied
+  away.
+
+- **The `Localized*` strings are a field, not a translation layer.** The
+  reference server sends English regardless of client. Returning those words
+  answers a question; it makes no promise about localisation. If Reelix ever
+  localises, this is one of the places that changes — deliberately, rather
+  than a null quietly becoming a word.
+
+- **Structural conformance is not behavioural conformance**, now written into
+  `docs/compat-capture.md` because it is a property of the harness rather than
+  of this change. Setting `IsDefault` correctly — an unambiguous improvement —
+  made the visible output strictly worse, turning `English DD+ null` into
+  `English DD+ null (null)`, because it pushed Wholphin into a branch reading a
+  field Reelix answered null for. **The fixture suite could not catch either
+  state: `false` and `true` are the same JSON type, so the comparison passed
+  identically before and after.** A field whose *value* drives client
+  branching needs a real client or a source read.
+
+- **A fault injection exposed a gap in its own test.** Dropping the
+  `ChannelLayout` normaliser from the DTO left `TestDisplayChannelLayout`
+  green, because that test exercises the function directly and nothing
+  asserted the DTO calls it. An assertion on the response body was added and
+  the injection then failed correctly. Testing a helper is not testing that
+  anything uses it.
+
 ## 2026-08-27 — 0.0.2: route aliases, and a correction to compat-capture.md
 
 **Completed:**

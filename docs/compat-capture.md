@@ -58,6 +58,62 @@ the reference server, not for the spec.**
 
 ---
 
+## What the harness cannot prove
+
+The fixture comparison checks that a response is a structural **superset** of a
+recorded one: every field present, every type matching. That is a real
+guarantee and it is narrower than it feels.
+
+**Structural conformance is not behavioural conformance.**
+
+The comparison sees JSON types. It cannot see values, so it cannot see a field
+whose *value* decides what a client does. Two failures found on hardware, both
+of which the suite passed cleanly:
+
+- **`IsDefault` was hardcoded `false`.** Setting it correctly from the
+  container was an unambiguous improvement, and it made the visible output
+  strictly worse: it pushed Wholphin into a branch that reads
+  `LocalizedDefault`, which Reelix answered `null` for, so a track label went
+  from `English DD+ null` to `English DD+ null (null)`. The suite could not
+  catch either state — `false` and `true` are the same JSON type, so the
+  comparison passed identically before and after.
+- **`ChannelLayout` was `null`.** Permitted by an allowance whose stated reason
+  was that clients have their own strings. They do not. Wholphin concatenates
+  the field into a label without a null check, so a user saw the literal word
+  `null`; Findroid matches it against `"5.1"` and silently classified a 5.1
+  track as stereo.
+
+### The rule this gives you
+
+> A field whose value drives client branching needs a real client or a source
+> read. The harness can only prove the shape.
+
+Concretely, when a field is null or constant in a Reelix response, ask which
+of these it is:
+
+1. **Read through a null check** — a null omits a row. Free.
+2. **Concatenated into a string** — a null reaches a user as `"null"`.
+3. **Matched against specific values** — a null or an unexpected form takes a
+   fallback branch and produces a confident wrong answer. This is the worst
+   case, because nobody reports it.
+
+Only the client's source tells you which. Reading third-party client source to
+learn what a client sends and expects is explicitly permitted; see the
+clean-room rule in `CLAUDE.md`.
+
+`internal/compat/jellyfin/fixture_test.go` now marks every allowance with the
+evidence behind it — `[us]`, `[capture]`, `[client]`, `[unread]`. An audit of
+that list found the pattern exactly:
+
+> Every reason that stated a fact about **Reelix** held.
+> Every reason that stated a fact about **someone else's software** was where
+> the errors were.
+
+Be suspicious of the second kind. Check it against source rather than
+reasoning about how a client ought to behave.
+
+---
+
 ## Probing the reference server for routes
 
 The capture harness answers "what does this client send". This answers "what
