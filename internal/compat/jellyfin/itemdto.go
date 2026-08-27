@@ -206,7 +206,8 @@ type mediaStreamDTO struct {
 	Height  *int    `json:"Height"`
 	BitRate *int64  `json:"BitRate"`
 
-	Channels      *int    `json:"Channels"`
+	Channels *int `json:"Channels"`
+	// Probed. Clients read both directly rather than through DisplayTitle.
 	ChannelLayout *string `json:"ChannelLayout"`
 	SampleRate    *int    `json:"SampleRate"`
 	Language      *string `json:"Language"`
@@ -536,6 +537,8 @@ func newStreamDTOs(streams []domain.MediaStream) []mediaStreamDTO {
 			// ISO 639 code the container carried, which is what the recorded
 			// server sent; the English name it also composed lives only in
 			// DisplayTitle.
+			ChannelLayout:    displayChannelLayout(s.ChannelLayout),
+			SampleRate:       s.SampleRate,
 			Language:         s.Language,
 			Title:            s.Title,
 			Profile:          s.Profile,
@@ -562,6 +565,12 @@ func newStreamDTOs(streams []domain.MediaStream) []mediaStreamDTO {
 			IsTextSubtitleStream:   s.Kind == domain.StreamKindSubtitle && isTextSubtitle(s.Codec),
 			AspectRatio:            aspectRatio(s.Width, s.Height),
 			DisplayTitle:           displayTitle(s),
+
+			LocalizedDefault:         &localizedLabels.def,
+			LocalizedForced:          &localizedLabels.forced,
+			LocalizedExternal:        &localizedLabels.external,
+			LocalizedHearingImpaired: &localizedLabels.hearingImpaired,
+			LocalizedUndefined:       &localizedLabels.undefined,
 		}
 		out = append(out, dto)
 	}
@@ -594,6 +603,25 @@ func secondsToTicks(seconds float64) int64 {
 		return 0
 	}
 	return int64(seconds * ticksPerSecond)
+}
+
+// localizedLabels are the strings the recorded server sent for these fields,
+// reproduced exactly.
+//
+// Calling them "localized" is Jellyfin's naming, not a promise Reelix makes:
+// the reference server sends English regardless of the requesting client, and
+// these are the words it sent. Returning them is answering a question, not
+// implementing translation. If Reelix ever localises anything, this is one of
+// the places that would have to change, and it will be a deliberate change
+// rather than a null quietly becoming a word.
+var localizedLabels = struct {
+	def, forced, external, hearingImpaired, undefined string
+}{
+	def:             "Default",
+	forced:          "Forced",
+	external:        "External",
+	hearingImpaired: "Hearing Impaired",
+	undefined:       "Undefined",
 }
 
 // level widens a stored codec level for the DTO, which types it as a number

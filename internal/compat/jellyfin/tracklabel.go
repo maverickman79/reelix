@@ -241,11 +241,43 @@ func joinParts(title *string, parts ...string) string {
 	return strings.Join(kept, " - ")
 }
 
+// displayChannelLayout renders a stored channel layout for the ChannelLayout
+// field a client reads directly.
+//
+// ffprobe reports a positional qualifier for many files — "5.1(side)",
+// "7.1(wide)" — and the recorded server sent bare "5.1" and "stereo". The
+// qualifier is stripped here rather than at probe time, so the database keeps
+// what the container said.
+//
+// This is not cosmetic. Findroid matches this string against exactly "2.0",
+// "2.1", "5.1" and "7.1" to classify a track; "5.1(side)" falls through to the
+// stereo arm and labels a 5.1 track as 2.0. A wrong label that looks right is
+// worse than a missing one, which is the whole reason this field stopped being
+// an allowance.
+func displayChannelLayout(layout *string) *string {
+	if layout == nil {
+		return nil
+	}
+
+	trimmed := strings.TrimSpace(*layout)
+	if i := strings.IndexByte(trimmed, '('); i > 0 {
+		trimmed = strings.TrimSpace(trimmed[:i])
+	}
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
+}
+
 // audioChannelLayout names a channel count the way a listener would.
 //
-// Derived from the count rather than stored: ffprobe's channel_layout adds
-// positional detail ("5.1(side)") the recorded server did not show, and the
-// count answers the question the label is asking.
+// DELIBERATELY STILL DERIVED FROM THE COUNT, even though a stored layout now
+// exists. The capture shows the reference server sending ChannelLayout
+// "stereo" while the same stream's DisplayTitle says "Stereo" — the two fields
+// disagree on purpose, and the count-derived form already reproduces the
+// DisplayTitle side exactly. Feeding the stored layout in here would change a
+// string that currently matches the capture. The column feeds the
+// ChannelLayout field; this feeds the label.
 func audioChannelLayout(channels *int) string {
 	if channels == nil || *channels <= 0 {
 		return ""

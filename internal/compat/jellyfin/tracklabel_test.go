@@ -227,3 +227,70 @@ func TestLanguageNameIsCaseAndWhitespaceTolerant(t *testing.T) {
 		t.Errorf("languageName(\"\") = %q, want empty", got)
 	}
 }
+
+// TestDisplayChannelLayout pins the boundary normalisation.
+//
+// The stored value keeps ffprobe's qualifier; this is what a client sees.
+func TestDisplayChannelLayout(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   *string
+		want *string
+	}{
+		// The case that matters: Findroid matches "5.1" exactly and sends
+		// anything else to its stereo arm.
+		{"side qualifier stripped", str("5.1(side)"), str("5.1")},
+		{"wide qualifier stripped", str("7.1(wide)"), str("7.1")},
+		{"back qualifier stripped", str("5.1(back)"), str("5.1")},
+
+		// The two forms the capture actually contains, unchanged.
+		{"plain 5.1 unchanged", str("5.1"), str("5.1")},
+		{"stereo unchanged", str("stereo"), str("stereo")},
+		{"mono unchanged", str("mono"), str("mono")},
+
+		{"nil stays nil", nil, nil},
+		{"empty becomes nil", str(""), nil},
+		{"only a qualifier becomes nil", str("(side)"), str("(side)")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := displayChannelLayout(tc.in)
+			switch {
+			case tc.want == nil && got != nil:
+				t.Errorf("displayChannelLayout = %q, want nil", *got)
+			case tc.want != nil && got == nil:
+				t.Errorf("displayChannelLayout = nil, want %q", *tc.want)
+			case tc.want != nil && *got != *tc.want:
+				t.Errorf("displayChannelLayout = %q, want %q", *got, *tc.want)
+			}
+		})
+	}
+}
+
+// TestDisplayTitleStillDerivesTheLayoutFromTheCount guards a difference the
+// capture is explicit about and that looks like an inconsistency worth
+// "fixing".
+//
+// The reference server sent ChannelLayout "stereo" and DisplayTitle "Stereo"
+// for the same stream. The label is composed from the channel count and must
+// stay that way; wiring the stored layout into it would change a string that
+// currently reproduces the capture exactly.
+func TestDisplayTitleStillDerivesTheLayoutFromTheCount(t *testing.T) {
+	stream := domain.MediaStream{
+		Kind: domain.StreamKindAudio, Codec: str("ac3"),
+		Channels:      num(2),
+		Language:      str("eng"),
+		ChannelLayout: str("stereo"),
+	}
+
+	const want = "English - Dolby Digital - Stereo"
+	if got := displayTitle(stream); got != want {
+		t.Errorf("displayTitle()\n got: %q\nwant: %q\n"+
+			"the label takes its layout from the channel count, not from the stored string", got, want)
+	}
+
+	// And the qualifier never reaches the label either.
+	stream.Channels, stream.ChannelLayout = num(6), str("5.1(side)")
+	if got := displayTitle(stream); got != "English - Dolby Digital - 5.1" {
+		t.Errorf("displayTitle() = %q, want %q", got, "English - Dolby Digital - 5.1")
+	}
+}
