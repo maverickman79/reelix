@@ -65,6 +65,9 @@ func (a *API) Routes() http.Handler {
 
 	mux.HandleFunc("POST /Sessions/Capabilities", a.requireAuth(a.handleSessionCapabilities))
 
+	// Held open for the life of the connection; see socket.go.
+	mux.HandleFunc("GET /socket", a.requireAuth(a.handleSocket))
+
 	return mux
 }
 
