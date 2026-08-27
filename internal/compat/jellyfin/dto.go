@@ -252,3 +252,50 @@ type quickConnectResult struct {
 	AppVersion    string `json:"AppVersion"`
 	DateAdded     string `json:"DateAdded"`
 }
+
+// queryResult is the envelope Jellyfin wraps most item lists in.
+//
+// Items is []any while the routes returning it are all empty. The second half
+// of Step 6 introduces the item DTO and will want this typed; that is a change
+// to make when there is something to put in it, not before.
+type queryResult struct {
+	Items            []any `json:"Items"`
+	TotalRecordCount int   `json:"TotalRecordCount"`
+	StartIndex       int   `json:"StartIndex"`
+}
+
+// emptyQueryResult is a well-formed empty list.
+//
+// Items is a non-nil slice: a nil one marshals as null, and the SDK's
+// generated type declares the array non-nullable.
+func emptyQueryResult() queryResult {
+	return queryResult{Items: emptyList()}
+}
+
+// displayPreferences is GET /DisplayPreferences/default.
+//
+// Reelix stores none of this. The shape is served because the client expects
+// it; see the handler for why the values are what they are.
+type displayPreferences struct {
+	ID                 string         `json:"Id"`
+	SortBy             string         `json:"SortBy"`
+	RememberIndexing   bool           `json:"RememberIndexing"`
+	PrimaryImageHeight int            `json:"PrimaryImageHeight"`
+	PrimaryImageWidth  int            `json:"PrimaryImageWidth"`
+	CustomPrefs        map[string]any `json:"CustomPrefs"`
+	ScrollDirection    string         `json:"ScrollDirection"`
+	ShowBackdrop       bool           `json:"ShowBackdrop"`
+	RememberSorting    bool           `json:"RememberSorting"`
+	SortOrder          string         `json:"SortOrder"`
+	ShowSidebar        bool           `json:"ShowSidebar"`
+	Client             string         `json:"Client"`
+}
+
+// problemDetails is the RFC 9110 error body ASP.NET returns, and the shape the
+// recorded 404s carry. Reelix emits it only where the reference server did.
+type problemDetails struct {
+	Type    string `json:"type"`
+	Title   string `json:"title"`
+	Status  int    `json:"status"`
+	TraceID string `json:"traceId"`
+}

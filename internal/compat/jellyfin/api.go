@@ -68,6 +68,14 @@ func (a *API) Routes() http.Handler {
 	// Held open for the life of the connection; see socket.go.
 	mux.HandleFunc("GET /socket", a.requireAuth(a.handleSocket))
 
+	// Polled on the home screen. Empty, but never a 404; see polled.go.
+	mux.HandleFunc("GET /DisplayPreferences/default", a.requireAuth(a.handleDisplayPreferences))
+	mux.HandleFunc("GET /UserImage", a.requireAuth(a.handleUserImage))
+	mux.HandleFunc("GET /UserItems/Resume", a.requireAuth(a.handleResumeItems))
+	mux.HandleFunc("GET /Items/Latest", a.requireAuth(a.handleLatestItems))
+	mux.HandleFunc("GET /Shows/NextUp", a.requireAuth(a.handleNextUp))
+	mux.HandleFunc("GET /LiveTv/Recordings/Folders", a.requireAuth(a.handleRecordingFolders))
+
 	return mux
 }
 

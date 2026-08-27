@@ -407,6 +407,15 @@ func TestCapturedFlowInOrder(t *testing.T) {
 		{7, http.MethodGet, "/Users/Me", "GET_Users_Me", 200},
 		{8, http.MethodGet, "/System/Info/Public", "GET_System_Info_Public", 200},
 		{9, http.MethodPost, "/Sessions/Capabilities", "POST_Sessions_Capabilities", 204},
+		// The home screen. /UserImage answers 404 by design; see its handler.
+		{10, http.MethodGet, "/UserImage", "GET_UserImage", 404},
+		{11, http.MethodGet, "/DisplayPreferences/default", "GET_DisplayPreferences_default", 200},
+		{16, http.MethodGet, "/LiveTv/Recordings/Folders", "GET_LiveTv_Recordings_Folders", 200},
+		{19, http.MethodGet, "/UserItems/Resume", "GET_UserItems_Resume", 200},
+		{21, http.MethodGet, "/Items/Latest", "GET_Items_Latest", 200},
+		{22, http.MethodGet, "/Shows/NextUp", "GET_Shows_NextUp", 200},
+		// Call 123 in the capture is the WebSocket upgrade, which cannot be
+		// replayed through this HTTP client. See socket_test.go.
 	}
 
 	for _, s := range steps {
