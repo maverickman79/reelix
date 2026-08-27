@@ -21,6 +21,145 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-27 — v0.0.1 RETROSPECTIVE — the first vertical slice is complete
+
+Wholphin on the Ugoos SK1 discovers Reelix, authenticates, browses a movie
+library, opens a film, and direct-plays it with working seeking. All eleven
+success criteria in `docs/mvp-0.0.1.md` are met, verified against a real
+client on real hardware with a real library. Tagged `v0.0.1`.
+
+### What the eleven criteria actually proved
+
+Each was verified end to end, not in isolation:
+
+1. **Clean start.** `docker compose up -d` on a fresh database brings up the
+   app and Postgres, migrations apply automatically, health responds.
+2. **Administrator creation.** First-run setup creates the account once and
+   refuses a second attempt, including concurrently, under an advisory lock.
+3. **Library configuration.** One movie library with one filesystem path,
+   created through the native API.
+4. **Scan.** The walk found all six files, skipping sample directories and
+   non-video entries; a re-scan updates rather than duplicates.
+5. **Probe and persistence.** ffprobe filled containers, durations and 136
+   stream rows, Fight Club's 63 streams among them, into PostgreSQL.
+6. **Discovery.** Wholphin added the server by address; `LocalAddress` came
+   back as the address the client had dialled.
+7. **Authentication.** The 42-field `Policy` and the authorization header
+   parser both held against the real client's strict deserialization.
+8. **Browse.** The Movies library and its six films, with real durations and
+   normalised containers.
+9. **Detail.** 55 fields, media sources and streams, rendering at 48,996
+   bytes for the 63-stream remux without a client-side exception.
+10. **Direct play and seeking.** The original file, no transcode; nine 206
+    responses across one session at varying offsets and sizes.
+11. **Session logging.** One playback legible start to finish in the log,
+    correlated by play session id.
+
+### The whole library plays, and that vindicates the minimal profile match
+
+Every one of the six files direct-played on the SK1 — including the 76 GB
+Fight Club remux: Dolby Vision, HDR10+, HEVC, DTS-HD MA, 63 streams, streamed
+over Tailscale from the VPS to the living room at roughly 73 Mbit/s sustained,
+no transcode and no stutter. (Reelix's own derived bitrate for that file is
+72.9 Mbit/s, which is the same number arriving from the other direction.)
+
+**This is the evidence that the container-and-codec-membership decision was
+the right scope.** Every file the device could actually decode was served
+without transcoding. A stricter engine — checking levels, reference frames or
+bitrate ceilings — would have had more opportunities to refuse a file the
+hardware plays perfectly well, and every one of those refusals would have been
+invisible in testing until someone pressed play on the wrong film. The
+decision Reelix can act on is binary: hand over the file, or do not. A "no"
+finer-grained than that changes no outcome and adds ways to be wrong.
+
+### Known limitations carried into 0.0.2
+
+None of these is a bug. Each is a subsystem 0.0.1 deliberately excluded, and
+each has a visible consequence worth knowing before someone reports it:
+
+- **No playback state.** `/UserItems/Resume` stays empty and
+  `UserData.PlaybackPositionTicks` stays 0 however much of a film is watched.
+  Needs a table, a migration, and a decision about what "watched" means.
+- **No stream language or title metadata.** The scanner records index, kind,
+  codec, dimensions, channels and bitrate only, so Fight Club's 57 subtitle
+  tracks render unlabelled. Needs a wider probe, a migration and a re-scan.
+- **`X-Emby-Authorization` and `X-MediaBrowser-Token` are unexercised.**
+  Written from published documentation, unit-tested, and never sent by
+  anything. The `Authorization: MediaBrowser` path is hardware-proven; these
+  two are not.
+- **The `stream.mkv` URL spelling is not routed.** Only `/Videos/{id}/stream`
+  exists. Some clients append the container extension; that is a deliberate
+  gap rather than an oversight, and the first client that needs it will 404.
+- **`/Items/{id}/Images/Primary` answered 401 rather than 404 once during
+  playback.** At least one client path requests artwork without a credential —
+  the same shape as the bare stream request. Harmless today, because there is
+  no artwork and the client draws a placeholder either way. **When scraping
+  lands this needs resolving**, because a 401 on an image a client expects to
+  exist is a retry, where a 404 is final.
+
+### Two security decisions that must NOT be "tidied" for consistency
+
+Both look inconsistent with the rest of the surface. Both are deliberate, and
+reverting either one breaks playback on the only client that defines success:
+
+- **The stream endpoint accepts a request carrying no session token.** All
+  nine recorded `/Videos/{id}/stream` requests come from ExoPlayer's own HTTP
+  stack (`Dalvik/2.1.0`, not the SDK's OkHttp) with no `Authorization` header
+  and no `api_key`. It is protected instead by the media source ETag as a
+  capability: a client can only have learned that value from an authenticated
+  PlaybackInfo call, which makes the URL unguessable rather than open.
+- **`api_key` is accepted on that one route.** Step 5 refused query-string
+  credentials because they leak through access logs. That reasoning does not
+  apply here and only here, because the request logger deliberately omits
+  query strings — which means the exception is safe exactly as long as that
+  stays true. Anyone adding query strings to the access log must revisit this.
+
+### 0.0.2 ordering, and why it is this order
+
+1. **Playback state.** Everything else queues behind it, and it is the most
+   visible gap: a media server that forgets where you were is not one people
+   keep using.
+2. **Stream metadata** — language, title, profile, frame rate. A wider probe,
+   a migration and a re-scan. Retires most of the fixture-comparison
+   allowance list at the same time.
+3. **Metadata scraping.** Titles, overviews, ratings, artwork — and the
+   external IDs the importer depends on.
+4. **Emby/Jellyfin watch-history importer.** It must come after scraping,
+   because matching an existing library to Reelix's items needs external IDs,
+   and after playback state, because there has to be somewhere to import
+   into. **This is the feature that decides whether anyone switches:** friends
+   and family will not move servers if it means losing their watched status.
+5. **Admin GUI.** Last on purpose. The native API has driven everything so far
+   and the framework choice still needs proposing and approving separately.
+
+### Multi-client validation, after 0.0.2
+
+Wholphin defines success for 0.0.1, and one client's behaviour is not a
+specification. The plan is to capture each of these against the reference
+Jellyfin first, then diff Reelix's answers against that recording — the same
+method Step 0 established:
+
+- **VidHub** — the secondary target already named in the compatibility
+  contract, and the most likely to exercise the two unproven authorization
+  header paths.
+- **jellyfin-web** — the reference implementation's own client, and the
+  strictest reading of the API.
+- **Findroid** — another Android client on the same Kotlin SDK, which should
+  agree with Wholphin and will say so loudly if Reelix has quietly depended on
+  something Wholphin-specific.
+- **UHF on tvOS** — the most interesting and the hardest. AVPlayer's range
+  behaviour differs materially from ExoPlayer's: it issues parallel and
+  probing reads rather than the simple open-ended `bytes=N-` this milestone
+  was built and tested against. There is also no `adb logcat` equivalent, so
+  a failure surfaces as a spinner with nothing behind it — capture-and-diff
+  is not a convenience there, it is the only diagnostic channel.
+
+### Next step
+
+Begin 0.0.2 with playback state. Before starting, prune the 0.0.1 entries
+below this one into `docs/archive/` as the top of this file instructs — this
+retrospective is the summary they collapse into.
+
 ## 2026-08-27 — Step 7: direct play and seeking
 
 **Completed:**
