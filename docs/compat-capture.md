@@ -10,18 +10,106 @@ Do this before writing any compatibility-layer code.
 
 ## Why
 
-Jellyfin's OpenAPI spec tells you what routes exist. It does not tell you:
+**The OpenAPI spec does not tell you what routes exist.** It is a partial
+description of the surface, and treating it as the authority will send you the
+wrong way. It also does not tell you:
 
 - which routes a given client actually calls, in what order, during first run
 - which query parameters the client sends
 - which response fields the client will crash on if omitted
 - what a client does when a route it expects returns `404` vs `500` vs `{}`
 
+That first line used to read "Jellyfin's OpenAPI spec tells you what routes
+exist." It was wrong, and it had been the foundation of every compatibility
+decision since Step 0. See "The spec is incomplete" below for what it missed
+and how the gap was found.
+
 Wholphin is built on the Jellyfin Kotlin SDK, which is generated from that spec.
 That means its calls are disciplined and predictable — but also that its
 deserialization is **strict**. A missing non-nullable field is a hard exception,
 not a graceful degradation. The capture tells you exactly which fields are
 non-negotiable.
+
+---
+
+## The spec is incomplete
+
+Measured against a real Jellyfin **10.11.8**, the published 10.11.0
+specification declares 315 paths and **omits entire families of routes the
+server answers**:
+
+- **Prefix aliases.** Every route is also served under `/emby/...` and
+  `/mediabrowser/...`, inherited from Emby. The spec contains neither string.
+  Multi-backend clients use the prefixed form; VidHub sends `/emby` on every
+  request and cannot log in without it.
+- **User-scoped routes.** `/Users/{userId}/Items`,
+  `/Users/{userId}/Items/{id}`, `/Users/{userId}/Items/Resume`,
+  `/Users/{userId}/Items/Latest`, `/Users/{userId}/Views` and others are all
+  live. None appears in the 10.11.0 spec, and none appears in 10.10.7 either —
+  diffing those two specs shows exactly one path changed between them
+  (`/System/WakeOnLanInfo`), so these were dropped from the *documentation*
+  long ago and are still *served*. Infuse and VidHub both use them.
+- **Stream spellings.** `/Videos/{id}/stream.mkv`, `.mp4` and `.ts` are all
+  answered; the spec documents the bare form.
+
+The lesson is not that the spec is useless — it is the only place to learn
+request and response *shapes*. It is that **route existence is a question for
+the reference server, not for the spec.**
+
+---
+
+## Probing the reference server for routes
+
+The capture harness answers "what does this client send". This answers "what
+would a real server accept", which is a different question and the one you
+need when a client reports a 404 for a route no capture contains.
+
+Bring up `jellyfin-ref` alone — mitmproxy is not needed — and probe. **No
+credentials are required**, because the useful signal is whether the route
+exists at all, and that survives an unauthenticated request:
+
+```bash
+cd hack/capture && docker compose up -d jellyfin-ref
+curl -s -o /dev/null -w '%{http_code}' http://<host>:8096/emby/Items   # 401
+```
+
+### Telling a routing 404 from a handler 404
+
+This is the whole technique, and without it the probe is useless: a request for
+a route that does not exist and a request for an item that does not exist both
+answer `404`. They are distinguishable by **response shape**:
+
+| Meaning | Status | Body |
+|---|---|---|
+| Route does not exist | 404 | `Content-Length: 0`, empty |
+| Route exists, item does not | 404 | `Content-Type: text/plain`, `Error processing request.` |
+
+So `/Videos/{fake-id}/stream.mkv` answering `404` with a body means the
+**route is real** and only the item was missing. The same request answering
+`404` with an empty body would mean the spelling is not served.
+
+A status other than 404 — `401`, `400`, `415` — always means the route exists;
+the request got far enough to be rejected on its merits.
+
+Always probe a control alongside the real question. `/notaprefix/System/Info/Public`
+and `/emby/emby/System/Info/Public` both answer an empty 404, which is what
+proves the prefix is a fixed list stripped once rather than a rule that drops
+any first segment.
+
+### What this method has established
+
+Confirmed present: both prefixes, case-insensitively (`/Emby`, `/EMBY`,
+`/MediaBrowser`); the user-scoped family; `stream.{container}` for any
+extension; trailing slashes; the long positional image forms; and
+case-insensitive matching across the whole surface.
+
+Confirmed **absent**, which matters just as much: `/jellyfin` and `/api` are
+not prefixes; `/emby/emby/...` is not a route; and
+`/Users/{userId}/Items/{id}/ThemeSongs` **does not exist** even though the
+bare `/Items/{id}/ThemeSongs` does. The user-scoped family looks mechanical
+and is not. Reelix has a test asserting that absence, so nobody later
+"completes" the set by generating twins — matching the reference server means
+matching what it declines to serve.
 
 ---
 
