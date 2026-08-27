@@ -46,6 +46,19 @@ type BrowseQuery struct {
 	ItemIDs    []uuid.UUID
 	MaxYear    *int
 
+	// UserID is whose playback state travels with the items, and whose
+	// progress the two filters below are judged against.
+	UserID uuid.UUID
+
+	// InProgressOnly answers "what am I part-way through".
+	InProgressOnly bool
+
+	// ExcludePlayed drops finished items.
+	ExcludePlayed bool
+
+	// PlayedOnly keeps only finished items.
+	PlayedOnly bool
+
 	Sort       repository.ItemSort
 	Descending bool
 
@@ -62,6 +75,10 @@ type BrowseResult struct {
 // ItemDetail is a single item with everything needed to display and play it.
 type ItemDetail struct {
 	Item domain.MediaItem
+
+	// State is the requesting user's progress through this item, zero when
+	// they have never played it.
+	State domain.PlaybackState
 
 	// File and Streams describe the media itself. File is nil when the item
 	// has no file row yet, which a scan interrupted between the two writes
@@ -129,13 +146,17 @@ func (s *MediaService) Browse(ctx context.Context, q BrowseQuery) (BrowseResult,
 	}
 
 	items, total, err := repository.NewMediaRepository(s.pool).ListItems(ctx, repository.ItemQuery{
-		LibraryIDs: q.LibraryIDs,
-		ItemIDs:    q.ItemIDs,
-		MaxYear:    q.MaxYear,
-		Sort:       sort,
-		Descending: q.Descending,
-		Offset:     q.Offset,
-		Limit:      q.Limit,
+		LibraryIDs:     q.LibraryIDs,
+		ItemIDs:        q.ItemIDs,
+		MaxYear:        q.MaxYear,
+		UserID:         q.UserID,
+		InProgressOnly: q.InProgressOnly,
+		ExcludePlayed:  q.ExcludePlayed,
+		PlayedOnly:     q.PlayedOnly,
+		Sort:           sort,
+		Descending:     q.Descending,
+		Offset:         q.Offset,
+		Limit:          q.Limit,
 	})
 	if err != nil {
 		return BrowseResult{}, err
@@ -143,8 +164,12 @@ func (s *MediaService) Browse(ctx context.Context, q BrowseQuery) (BrowseResult,
 	return BrowseResult{Items: items, Total: total}, nil
 }
 
-// Item returns one media item with its file and streams, or ErrItemNotFound.
-func (s *MediaService) Item(ctx context.Context, id uuid.UUID) (ItemDetail, error) {
+// Item returns one media item with its file, streams, and the requesting
+// user's progress through it, or ErrItemNotFound.
+//
+// A zero userID is allowed and yields zeroed state, for a caller with no user
+// in hand.
+func (s *MediaService) Item(ctx context.Context, id uuid.UUID, userID uuid.UUID) (ItemDetail, error) {
 	media := repository.NewMediaRepository(s.pool)
 
 	item, err := media.GetItem(ctx, id)
@@ -155,12 +180,20 @@ func (s *MediaService) Item(ctx context.Context, id uuid.UUID) (ItemDetail, erro
 		return ItemDetail{}, err
 	}
 
+	state, err := repository.NewPlaybackRepository(s.pool).Get(ctx, userID, id)
+	if err != nil && !errors.Is(err, repository.ErrNotFound) {
+		return ItemDetail{}, err
+	}
+	// Never played is the common case, not an error: the zero value already
+	// says position zero, unplayed, never.
+	state.UserID, state.MediaItemID = userID, id
+
 	files, err := media.ListFilesByItem(ctx, item.ID)
 	if err != nil {
 		return ItemDetail{}, err
 	}
 
-	detail := ItemDetail{Item: item}
+	detail := ItemDetail{Item: item, State: state}
 	if len(files) == 0 {
 		return detail, nil
 	}

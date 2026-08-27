@@ -143,3 +143,105 @@ func TestDecideWithoutAFile(t *testing.T) {
 		t.Error("an item with no file was declared playable")
 	}
 }
+
+// TestEvaluateResumeThresholds pins what counts as "in progress".
+//
+// The first two cases are the reference server's own observed behaviour, taken
+// from the Step 0 capture: it was watched to 2.5% of Idiocracy and 0.24% of
+// Congo, and in both cases reported a resume position of zero and an empty
+// Continue Watching list. Reelix has to agree, or a film someone sampled for
+// two minutes clutters their home screen forever.
+func TestEvaluateResumeThresholds(t *testing.T) {
+	const (
+		idiocracy = 5050.4
+		congo     = 6509.5
+	)
+
+	tests := []struct {
+		name          string
+		position      float64
+		runtime       float64
+		wantResume    float64
+		wantCompleted bool
+	}{
+		{
+			name:     "the capture's Idiocracy stop, 2.5% in",
+			position: 126.389, runtime: idiocracy,
+		},
+		{
+			name:     "the capture's Congo stop, 0.24% in",
+			position: 15.474, runtime: congo,
+		},
+		{
+			name:     "half way through is resumable",
+			position: idiocracy / 2, runtime: idiocracy,
+			wantResume: idiocracy / 2,
+		},
+		{
+			name:     "the closing credits count as watched",
+			position: idiocracy * 0.95, runtime: idiocracy,
+			wantCompleted: true,
+		},
+		{
+			name:     "the very end counts as watched",
+			position: idiocracy, runtime: idiocracy,
+			wantCompleted: true,
+		},
+		{
+			// Exactly at the bound, which is in.
+			name:     "exactly the lower threshold",
+			position: idiocracy * 0.05, runtime: idiocracy,
+			wantResume: idiocracy * 0.05,
+		},
+		{
+			// Exactly at the bound, which is not yet finished.
+			name:     "exactly the upper threshold",
+			position: idiocracy * 0.90, runtime: idiocracy,
+			wantResume: idiocracy * 0.90,
+		},
+		{
+			name:     "just under the lower threshold",
+			position: idiocracy * 0.049, runtime: idiocracy,
+		},
+		{
+			// The runtime floor gates resuming only.
+			name:     "a four-minute item is never resumable",
+			position: 120, runtime: 240,
+		},
+		{
+			name:     "but a four-minute item watched to the end is played",
+			position: 235, runtime: 240,
+			wantCompleted: true,
+		},
+		{
+			name:     "an unprobed file has no fraction to judge",
+			position: 600, runtime: 0,
+		},
+		{
+			name:     "the start of a film is not progress",
+			position: 0, runtime: idiocracy,
+		},
+		{
+			name:     "a negative position is not progress",
+			position: -5, runtime: idiocracy,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := service.Evaluate(tt.position, tt.runtime)
+
+			if got.Completed != tt.wantCompleted {
+				t.Errorf("Completed = %v, want %v", got.Completed, tt.wantCompleted)
+			}
+			if got.ResumePosition != tt.wantResume {
+				t.Errorf("ResumePosition = %v, want %v", got.ResumePosition, tt.wantResume)
+			}
+			// A finished item must not also offer a resume point in the
+			// credits, and an in-progress one must have somewhere to resume.
+			if got.Completed && got.ResumePosition != 0 {
+				t.Errorf("a completed item kept a resume position of %v", got.ResumePosition)
+			}
+		})
+	}
+}
