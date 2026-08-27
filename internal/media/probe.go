@@ -46,6 +46,13 @@ type ProbeStream struct {
 	Level       *int
 	PixelFormat *string
 
+	// Audio-only. ChannelLayout is ffprobe's own string and is stored
+	// verbatim, qualifier included: "5.1(side)" is what the container says,
+	// and rewriting it here would discard the distinction at the only point
+	// that still has it. The compatibility layer decides what a client sees.
+	ChannelLayout *string
+	SampleRate    *int
+
 	// Both rates are carried because ffprobe reports two different things:
 	// r_frame_rate is the container's base rate and avg_frame_rate the
 	// measured average. They agree on constant-frame-rate content and
@@ -151,6 +158,10 @@ type ffprobeOutput struct {
 		Level       int    `json:"level"`
 		PixelFormat string `json:"pix_fmt"`
 
+		ChannelLayout string `json:"channel_layout"`
+		// A string, like bit_rate, not a number.
+		SampleRate string `json:"sample_rate"`
+
 		// Rationals, as strings: "24000/1001", or "0/0" when there is none.
 		AvgFrameRate  string `json:"avg_frame_rate"`
 		RealFrameRate string `json:"r_frame_rate"`
@@ -228,6 +239,11 @@ func parseProbeOutput(raw []byte) (ProbeResult, error) {
 		if s.Level > 0 {
 			level := s.Level
 			stream.Level = &level
+		}
+
+		stream.ChannelLayout = nonEmptyPtr(s.ChannelLayout)
+		if r, err := strconv.Atoi(s.SampleRate); err == nil && r > 0 {
+			stream.SampleRate = &r
 		}
 
 		stream.AverageFrameRate = parseRational(s.AvgFrameRate)

@@ -39,6 +39,8 @@ const realFFprobeOutput = `{
             "codec_type": "audio",
             "level": -99,
             "channels": 6,
+            "channel_layout": "5.1(side)",
+            "sample_rate": "48000",
             "r_frame_rate": "0/0",
             "avg_frame_rate": "0/0",
             "bit_rate": "640000",
@@ -153,6 +155,21 @@ func TestParseProbeOutput(t *testing.T) {
 		t.Errorf("audio stream carries a frame rate: real=%v avg=%v",
 			audio.RealFrameRate, audio.AverageFrameRate)
 	}
+	// Stored verbatim, qualifier included. Normalising here would throw the
+	// distinction away at the only point that still has it.
+	if audio.ChannelLayout == nil || *audio.ChannelLayout != "5.1(side)" {
+		t.Errorf("audio channel layout = %v, want \"5.1(side)\" exactly as ffprobe reported it",
+			audio.ChannelLayout)
+	}
+	if audio.SampleRate == nil || *audio.SampleRate != 48000 {
+		t.Errorf("audio sample rate = %v, want 48000", audio.SampleRate)
+	}
+	// Video streams carry neither.
+	if video.ChannelLayout != nil || video.SampleRate != nil {
+		t.Errorf("video stream carries audio fields: layout=%v rate=%v",
+			video.ChannelLayout, video.SampleRate)
+	}
+
 	if !audio.IsDefault || audio.IsForced || audio.IsHearingImpaired {
 		t.Errorf("audio dispositions = default:%v forced:%v hearing_impaired:%v, want true/false/false",
 			audio.IsDefault, audio.IsForced, audio.IsHearingImpaired)
@@ -210,7 +227,8 @@ func TestParseProbeOutputMissingFields(t *testing.T) {
 	// A container with no tags, no disposition object and no profile must
 	// produce nils and falses rather than empty strings and zeroes.
 	if s.Language != nil || s.Title != nil || s.Profile != nil ||
-		s.Level != nil || s.PixelFormat != nil {
+		s.Level != nil || s.PixelFormat != nil ||
+		s.ChannelLayout != nil || s.SampleRate != nil {
 		t.Errorf("absent metadata became values: %+v", s)
 	}
 	if s.AverageFrameRate != nil || s.RealFrameRate != nil {
