@@ -64,33 +64,49 @@ stay scannable. Prune entries older than the current minor version into
 - No credential reaches the logs: neither the access token, the raw
   authorization header, the password, nor either stored hash, checked in both
   the test harness and the live container logs.
+- **COMPLETION CRITERION MET — verified on hardware.** Wholphin on the SK1
+  added the server, authenticated, and displays the `steven` user and the
+  Reelix server name. No serialization exception: the 42-field `Policy` and
+  the authorization header parser both held against the real client. Every
+  Step 5 route answered correctly, and every 404 in the server log is a
+  Step 6 route.
 
 **In flight:**
-- Nothing in code. **Awaiting the hardware run:** Wholphin on the SK1 adding
-  the server and logging in. That is the completion criterion and cannot be
-  verified from here — `adb` is not installed on this machine.
+- Nothing.
 
 **Blocked:**
 - Nothing.
 
 **Next step:**
-- Hardware verification, then Step 6: user views, library items, item detail,
-  dashless ids, well-formed empty responses, and accepting the `/socket`
-  WebSocket.
+- Step 6: user views, library items, item detail, dashless ids, well-formed
+  empty responses, and accepting the `/socket` WebSocket.
+
+**Observed from the real client — these shape Step 6:**
+- **Wholphin retries `/socket` indefinitely with backoff** until it gets a
+  WebSocket upgrade. Accepting and holding the connection is not optional
+  polish; refusing it leaves the client reconnecting forever.
+- **Wholphin retries 404s rather than treating them as final.** `/UserViews`
+  was requested three times in two seconds. So for any route Step 6 does not
+  fully implement, a well-formed empty response is materially better than a
+  404 — a 404 produces a retry storm, an empty response settles. This
+  sharpens the constitution's existing rule about opportunistically polled
+  endpoints: it is not only that a 500 shows an empty screen, it is that a
+  404 does not stop the client asking.
 
 **Decisions made:**
-- **KNOWN RISK — the authorization header parser has no recorded reference.**
-  `redact.py` replaced every `Authorization` value in the capture with
-  "REDACTED", and `X-Emby-Authorization` and `X-MediaBrowser-Token` appear
-  nowhere in it at all. The parser was written from Jellyfin's published API
-  documentation and the format the Kotlin SDK is known to emit — permitted
-  sources, but not observed traffic. It is the single most likely piece of
-  this step to be subtly wrong, and it is the piece a login failure would
-  most plausibly come from. Its 25 unit cases cover quoted values containing
-  commas and equals signs, spacing and casing variation, unquoted values,
-  missing fields, and malformed input, but a passing test here is weaker
-  evidence than a passing fixture comparison elsewhere. If the SK1 fails to
-  log in, look here first. A future capture should preserve the header
+- **The authorization header parser had no recorded reference — now
+  hardware-verified for Wholphin.** `redact.py` replaced every
+  `Authorization` value in the capture with "REDACTED", and
+  `X-Emby-Authorization` and `X-MediaBrowser-Token` appear nowhere in it at
+  all, so the parser was written from Jellyfin's published API documentation
+  and the format the Kotlin SDK is known to emit rather than from observed
+  traffic. It was the piece of this step most likely to be subtly wrong.
+  The SK1 run retires that risk **for Wholphin's exact header format only**:
+  the real client authenticated, so the `Authorization: MediaBrowser` path is
+  now proven end to end. The `X-Emby-Authorization` and `X-MediaBrowser-Token`
+  paths remain unit-tested and unobserved — nothing has ever sent them — so
+  VidHub or another client could still expose a fault there.
+  `redact.py` should be fixed before the next capture to preserve the header
   structure while redacting only the token value.
 - **`/System/Info` is unvalidated and unexercised.** No fixture exists —
   Wholphin never called it — so its shape comes from the published OpenAPI
@@ -99,11 +115,11 @@ stay scannable. Prune entries older than the current minor version into
   unexpected, this is the first place to look.
 - QuickConnect reports `false` and `/QuickConnect/Initiate` answers 401.
   Reelix does not implement it, and advertising a flow that then fails in the
-  user's hands is worse than declining cleanly. **Wholphin's reaction to
-  `false` is unverified** — the reference server had the feature enabled, so
-  the capture only covers the enabled path. If the SK1 stalls at the login
-  screen rather than showing a username and password form, this is the second
-  place to look.
+  user's hands is worse than declining cleanly. The reference server had the
+  feature enabled, so the capture covered only the enabled path and Wholphin's
+  reaction to `false` was unverified — **the SK1 run confirms it: the client
+  falls through to the credentials form and logs in normally.** Declining a
+  feature cleanly is a path the SDK handles.
 - `/Users/Public` returns `[]`, matching the reference. It sends the client
   to a credentials form, which is the only login Reelix supports, and avoids
   disclosing account names to anyone who can reach the port.
