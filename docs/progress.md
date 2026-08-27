@@ -21,6 +21,99 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-27 — 0.0.2: case-insensitive routes, and a bug that was not what it looked like
+
+**Completed:**
+- `internal/compat/jellyfin/routefold.go`: a trie built from the registered
+  route patterns. Literal segments fold to their canonical spelling;
+  parameter segments pass through byte for byte.
+- `normalizeStreamSpelling` compares `/Videos/` and `stream` case-insensitively
+  and still runs before the fold.
+- `GET /Users/{userId}`, delegating to `handleUsersMe` behind `requireUserPath`.
+
+**Verified:**
+- `gofmt`, `go vet ./...` clean. Suite green with a database and without one.
+- **Fault-injected both halves independently, each caught**, plus a third
+  injection that caught a bad test — see below.
+- **Live, the whole VidHub flow lowercased**: prefixed lowercase login issues a
+  token; `/emby/videos/{id}/stream.mkv` answers 206, as do the all-uppercase
+  and unprefixed spellings; `/emby/users/{id}`, `/emby/userviews`,
+  `/emby/items/{id}` and `POST /emby/items/{id}/playbackinfo` all 200.
+  `/emby/nonsense`, `/jellyfin/items` and `/emby/emby/items` still 404.
+
+**In flight:**
+- Nothing.
+
+**Blocked:**
+- Nothing.
+
+**Next step:**
+- VidHub on hardware: play and seek, which is this change's completion
+  criterion and the only part a test cannot reach.
+- Then the deferred Shield checks: The Singers reading
+  `English DD+ 5.1 (Default)`, and Fight Club's track picker.
+
+**Decisions made:**
+
+- **The bug was pipeline order, not case sensitivity, and only reproducing it
+  first showed that.** `normalizeStreamSpelling` guarded on
+  `strings.HasPrefix(path, "/Videos/")` — case-sensitive — so a lowercase
+  `videos` never had its extension stripped; and the fold could not rescue it
+  afterwards either, because `stream.mkv` is not a literal in any registered
+  pattern and the trie has nothing to match it against. **Adding case folding
+  alone would have left VidHub broken while looking like a fix**, and the
+  symptom (`404` on a lowercase path) points squarely at folding. The
+  giveaway was in the reproduction: `/Videos/{id}/stream.MKV` already
+  answered 206, so the *extension* case was never the problem — the
+  *directory* case was. Reproducing before diagnosing is what surfaced that,
+  and both halves are now fault-injected separately to keep it visible.
+
+- **Literals fold, parameters do not.** Lowercasing a whole path would corrupt
+  every value it carries — hex ids a client may echo back in its own casing,
+  container extensions. Knowing which segments are which means matching
+  against route shapes, hence a trie rather than a string operation. A flat
+  map of lowercased to canonical path cannot work: parameters make the path
+  set infinite.
+
+- **The trie is built from what is registered**, via a `routeTable` that
+  records patterns as they are declared. A hand-maintained second list would
+  drift the first time somebody added a route and forgot.
+
+- **Literals beat parameters, with backtracking.** This reproduces net/http's
+  own precedence, so `/Users/Me` keeps winning over `/Users/{userId}` rather
+  than parsing "Me" as a user id. Backtracking matters where a path's leading
+  segments match a literal route but its tail exists only under the parameter
+  — `/Items/Latest` is a route, `/Items/Latest/Intros` is not, but
+  `/Items/{id}/Intros` is.
+
+- **An unmatched path is returned unchanged.** The fold must never invent a
+  match; an unknown path keeps reaching the mux and getting an honest 404.
+
+- **A casing conflict panics at startup.** Two patterns whose literals differ
+  only by case have no correct fold — one spelling would silently win and
+  route the other somewhere unintended. `Routes()` runs at boot, so this fails
+  loudly there rather than quietly in production.
+
+- **`/Users/{userId}` is opportunistic, not blocking, and this is INFERENCE
+  FROM OBSERVED BEHAVIOUR rather than a source read.** VidHub is closed
+  source, unlike Wholphin and Findroid where the composition code was read
+  directly. The inference: its flow reached `PlaybackInfo` and the stream
+  request, so it was not blocked; and its `AuthenticateByName` response
+  already carried the full `User` object including `Policy`, so the request is
+  a refresh rather than an acquisition. Marked this way deliberately, per the
+  allowance-audit rule — a claim about someone else's software that was not
+  verified against their source is exactly the kind that reads as established
+  fact later.
+
+- **A fault injection caught a broken test, not broken code.** Reverting the
+  ordering fix left `TestVidHubStreamRequest` green. The test was building its
+  URL by splitting the canonical stream URL without separating the query
+  string, so the container extension landed in the QUERY and every case
+  silently requested the bare `/stream` route. It asserted 206 on a request
+  that exercised nothing. **A passing test proves nothing until something has
+  made it fail** — and the same lesson as the `displayChannelLayout` gap last
+  session: verifying the piece I wrote rather than the behaviour under test.
+
 ## 2026-08-27 — 0.0.2: the fields clients actually read, and an allowance audit
 
 **Completed:**
@@ -522,10 +615,20 @@ specification and has never met a real request:
 - **`/System/Info`.** No fixture exists — Wholphin never called it — so its
   shape comes from the published OpenAPI specification alone and has never
   been compared against a real response.
-- **Route matching is case-sensitive, and ASP.NET's is not.** Wholphin sends
-  the exact casing in the capture, so this is correct for the 0.0.1 gate. A
-  client that lowercases its paths would 404 on everything. Deliberately not
-  papered over with a normalising layer nothing has needed yet.
+- ~~**Route matching is case-sensitive, and ASP.NET's is not.**~~ RESOLVED.
+  VidHub was the client that lowercases its paths. Closed by the fold trie in
+  `routefold.go`.
+- **`/Items/{id}/Images/{type}` declares the image type as a route PARAMETER,
+  so case folding does not touch it.** `[us]` the pattern is
+  `/Items/{id}/Images/{type}`, and the fold rewrites literal segments only, by
+  design, so a request for `.../Images/primary` reaches the handler as
+  `primary`. `[capture]` the reference server matches the type
+  case-insensitively like everything else. Harmless while the route 404s
+  everything, because there is no artwork. **Whoever implements artwork must
+  compare the type case-insensitively, or split the pattern into literal
+  alternatives** — otherwise a client that lowercases its paths gets a 404 for
+  an image that exists. Noted in `api.go` at the registration and pinned by a
+  test asserting the current behaviour.
 
 **Operational and data lifecycle:**
 
