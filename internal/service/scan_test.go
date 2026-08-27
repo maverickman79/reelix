@@ -55,14 +55,34 @@ func (f *fakeProber) Probe(_ context.Context, path string) (media.ProbeResult, e
 	duration := 5340.5
 	width, height, channels := 1920, 1080, 6
 	bitRate := int64(8_000_000)
+	eng, profile, pixFmt := "eng", "High", "yuv420p"
+	audioTitle, subTitle := "Surround AC3 5.1", "SDH"
+	level := 40
+	frameRate := 23.976023976023978
 
+	// Metadata on every kind of stream, with the three dispositions set
+	// differently across them, so a scan that drops or transposes one of
+	// them cannot pass.
 	return media.ProbeResult{
 		Container: "matroska,webm",
 		Duration:  &duration,
 		Streams: []media.ProbeStream{
-			{Index: 0, Kind: "video", Codec: "h264", Width: &width, Height: &height, BitRate: &bitRate},
-			{Index: 1, Kind: "audio", Codec: "ac3", Channels: &channels},
-			{Index: 2, Kind: "subtitle", Codec: "subrip"},
+			{
+				Index: 0, Kind: "video", Codec: "h264",
+				Width: &width, Height: &height, BitRate: &bitRate,
+				Language: &eng, Profile: &profile, Level: &level, PixelFormat: &pixFmt,
+				AverageFrameRate: &frameRate, RealFrameRate: &frameRate,
+				IsDefault: true,
+			},
+			{
+				Index: 1, Kind: "audio", Codec: "ac3", Channels: &channels,
+				Language: &eng, Title: &audioTitle, IsDefault: true,
+			},
+			{
+				Index: 2, Kind: "subtitle", Codec: "subrip",
+				Language: &eng, Title: &subTitle,
+				IsForced: true, IsHearingImpaired: true,
+			},
 		},
 	}, nil
 }
@@ -601,4 +621,95 @@ func TestScanMissingPathFailsJob(t *testing.T) {
 	if job.Error == nil || *job.Error == "" {
 		t.Error("the failed job carries no explanation")
 	}
+}
+
+// TestScanPersistsStreamMetadata proves the scan carries every probed field
+// into the database rather than dropping it between the probe and the insert.
+//
+// This is the seam the other proofs do not cover: internal/media shows ffprobe
+// output is parsed, the repository shows the columns round-trip, and this
+// shows the scanner copies one into the other. A field forgotten in
+// persistFile's stream construction would pass both of the others.
+func TestScanPersistsStreamMetadata(t *testing.T) {
+	ctx := context.Background()
+	f := newScanFixture(t)
+	f.write("Fight Club (1999).mkv", 4096)
+
+	if job := f.scan(); job.State != domain.JobStateCompleted {
+		t.Fatalf("scan finished %s: %v", job.State, job.Error)
+	}
+
+	media := repository.NewMediaRepository(f.pool)
+
+	files, err := media.ListFilesByItem(ctx, f.onlyItem(t).ID)
+	if err != nil {
+		t.Fatalf("ListFilesByItem: %v", err)
+	}
+	if len(files) != 1 {
+		t.Fatalf("scan recorded %d files, want 1", len(files))
+	}
+
+	streams, err := media.ListStreams(ctx, files[0].ID)
+	if err != nil {
+		t.Fatalf("ListStreams: %v", err)
+	}
+	if len(streams) != 3 {
+		t.Fatalf("scan recorded %d streams, want 3", len(streams))
+	}
+
+	video, audio, subtitle := streams[0], streams[1], streams[2]
+
+	if video.Language == nil || *video.Language != "eng" {
+		t.Errorf("video language = %v, want eng", video.Language)
+	}
+	if video.Profile == nil || *video.Profile != "High" {
+		t.Errorf("video profile = %v, want High", video.Profile)
+	}
+	if video.Level == nil || *video.Level != 40 {
+		t.Errorf("video level = %v, want 40", video.Level)
+	}
+	if video.PixelFormat == nil || *video.PixelFormat != "yuv420p" {
+		t.Errorf("video pixel format = %v, want yuv420p", video.PixelFormat)
+	}
+	if video.AverageFrameRate == nil || video.RealFrameRate == nil {
+		t.Errorf("video frame rates = avg:%v real:%v, want both set",
+			video.AverageFrameRate, video.RealFrameRate)
+	}
+
+	if audio.Title == nil || *audio.Title != "Surround AC3 5.1" {
+		t.Errorf("audio title = %v, want \"Surround AC3 5.1\"", audio.Title)
+	}
+	if subtitle.Title == nil || *subtitle.Title != "SDH" {
+		t.Errorf("subtitle title = %v, want SDH", subtitle.Title)
+	}
+
+	// The dispositions differ per stream on purpose: this fails if the
+	// scanner writes one stream's flags onto another, or hardcodes any.
+	if !video.IsDefault || video.IsForced || video.IsHearingImpaired {
+		t.Errorf("video dispositions = default:%v forced:%v hearing:%v, want true/false/false",
+			video.IsDefault, video.IsForced, video.IsHearingImpaired)
+	}
+	if !audio.IsDefault || audio.IsForced || audio.IsHearingImpaired {
+		t.Errorf("audio dispositions = default:%v forced:%v hearing:%v, want true/false/false",
+			audio.IsDefault, audio.IsForced, audio.IsHearingImpaired)
+	}
+	if subtitle.IsDefault || !subtitle.IsForced || !subtitle.IsHearingImpaired {
+		t.Errorf("subtitle dispositions = default:%v forced:%v hearing:%v, want false/true/true",
+			subtitle.IsDefault, subtitle.IsForced, subtitle.IsHearingImpaired)
+	}
+}
+
+// onlyItem returns the single media item a one-file scan produced.
+func (f *scanFixture) onlyItem(t *testing.T) domain.MediaItem {
+	t.Helper()
+
+	items, err := repository.NewMediaRepository(f.pool).
+		ListItemsByLibrary(context.Background(), f.library)
+	if err != nil {
+		t.Fatalf("ListItemsByLibrary: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("scan produced %d items, want 1", len(items))
+	}
+	return items[0]
 }

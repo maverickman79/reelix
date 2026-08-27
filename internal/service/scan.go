@@ -327,6 +327,19 @@ func (s *ScanService) persistFile(
 				Height:      ps.Height,
 				Channels:    ps.Channels,
 				BitRate:     ps.BitRate,
+
+				Language:    ps.Language,
+				Title:       ps.Title,
+				Profile:     ps.Profile,
+				Level:       ps.Level,
+				PixelFormat: ps.PixelFormat,
+
+				AverageFrameRate: ps.AverageFrameRate,
+				RealFrameRate:    ps.RealFrameRate,
+
+				IsDefault:         ps.IsDefault,
+				IsForced:          ps.IsForced,
+				IsHearingImpaired: ps.IsHearingImpaired,
 			})
 		}
 		return tx.ReplaceStreams(ctx, file.ID, streams)
