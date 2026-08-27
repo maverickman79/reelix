@@ -21,6 +21,117 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-27 — Step 6, first half: the socket and the polled routes
+
+**Completed:**
+- `socket.go`: `GET /socket` accepts the upgrade and holds the connection.
+  Wholphin retries it forever with backoff until it gets a 101, so this is a
+  requirement rather than polish. The handler goroutine *is* the read loop;
+  a ping goroutine is cancelled and waited for before teardown.
+- `polled.go`: the home-screen routes Wholphin polls —
+  `/DisplayPreferences/default`, `/UserImage`, `/UserItems/Resume`,
+  `/Items/Latest`, `/Shows/NextUp`, `/LiveTv/Recordings/Folders`. All
+  authenticated, all answering in the recorded shape, none returning a 404
+  except `/UserImage` (see below).
+- `dto.go`: `queryResult` (the `Items`/`TotalRecordCount`/`StartIndex`
+  envelope), `displayPreferences`, `problemDetails`.
+- **Dependency added: `github.com/coder/websocket` v1.8.15.** Zero transitive
+  dependencies, verified from its `go.mod` before adding.
+
+**Verified:**
+- `gofmt`, `go vet ./...` clean. 359 tests pass with a database; without
+  `REELIX_TEST_DB_DSN` 87 skip cleanly and nothing fails.
+- Every recorded fixture for all six routes passes the superset comparison,
+  replayed with the query string the client actually sent — including the
+  `/UserItems/Resume` call that carries a `parentId` and no `userId` at all.
+- **The comparison was fault-injected again.** Dropping a `CustomPrefs` key
+  and renaming a JSON tag produced exactly
+  `$.CustomPrefs.skipForwardLength: missing (recorded string)` and
+  `$.TotalRecordCount: missing (recorded number)`, then was reverted.
+- **The handshake is validated against the capture itself.** `GET_socket/00`
+  recorded Wholphin's `Sec-WebSocket-Key` and the exact `Sec-WebSocket-Accept`
+  a real Jellyfin server computed from it; replaying that key must reproduce
+  that value. Asserted in the test suite by hand-written handshake, and again
+  live against a running server.
+- **Live run against the real middleware stack** (scratch database, since the
+  compat test harness does not run `requestLogger`): 101 upgrade with the
+  recorded accept value, `permessage-deflate` declined, held open and silent
+  after a client message, ping answered with a pong, close handshake echoed.
+  All six polled routes answered correctly, and `traceId` carried the real
+  request id. Neither the token nor the authorization header reached the logs.
+- Goroutine leak test: 20 connections opened and closed, count returns to
+  baseline. Wholphin reconnects often enough that a leak would compound.
+
+**In flight:**
+- Nothing.
+
+**Blocked:**
+- Nothing.
+
+**Next step:**
+- Step 6, second half: `/UserViews`, `/Items`, `/Items/{id}`. The home screen
+  stays empty until those exist.
+
+**Decisions made:**
+- **`github.com/coder/websocket` rather than hand-rolling RFC 6455.** A
+  hand-rolled parser was scoped at ~200 lines and its risk was bounded by
+  discarding every payload — but that protects 0.0.1, not 0.0.2 when real
+  messages get pushed over this socket and someone has to revisit a frame
+  parser written for a different purpose. A protocol parser reading
+  attacker-controlled length fields is the "mature dependency for
+  security-critical functionality" case the constitution names.
+- **`/UserImage` returns 404. This is the one deliberate exception to the
+  never-404 rule, and it must not be "fixed".** The reference server 404s for
+  a user with no avatar, which every Reelix user is — the project stores no
+  user images. Wholphin re-requested it ten times across the recorded session
+  (call orders 10, 31, 45 … 196), spread out as the user moved between
+  screens: a per-screen re-request, not the backoff storm a 404 provokes on a
+  route the client actually needs. A 200 with an empty body would instead hand
+  the client a zero-byte image to fail on. The reason is on the handler and
+  pinned by a test.
+- **`/Items/Latest` returns `[]`, and must be revisited in the second half.**
+  The reference server returned six movies. An empty Latest row on a populated
+  server is wrong; it is just not wrong in a way that stops the client, and
+  the item DTO belongs with `/Items`. `[]` passes the fixture comparison
+  legitimately — a recorded array only constrains the type.
+- **Reelix sends nothing over the socket.** The capture recorded only the 101;
+  the proxy never saw a frame, so any server-to-client message shape would be
+  a guess, and the SDK's strictness makes a wrong guess a hard client-side
+  exception. Silence cannot be misparsed. Every inbound message is logged by
+  `MessageType` at debug — never its payload, which a client is free to put a
+  token in — so the next hardware run collects the evidence this decision
+  currently lacks.
+- `permessage-deflate` is offered by Wholphin and declined. Not echoing the
+  extension is a legal answer meaning no compression, and it keeps the inflate
+  path out of a connection that carries no data.
+- A protocol-level ping every 60s, with a 10s pong deadline, closes the
+  connection when the peer has vanished without a FIN. There is no read
+  deadline: a quiet but healthy client must never be dropped, which would put
+  it straight back into its reconnect loop.
+- Display preferences are not persisted. The recorded fields are all emitted
+  because the SDK's generated type declares them non-nullable, with the
+  reference server's default values; `Id` is the user's own id, stable across
+  calls without storing anything.
+- Inbound messages are capped at 32 KiB; the library closes with 1009 beyond
+  that. Jellyfin socket messages are small JSON objects.
+
+**Known limitations — the unobserved second client:**
+Two risks now sit together, both "nothing has ever sent this at us":
+- `/socket` authenticates from the `Authorization` header only. Wholphin sends
+  it and no query string, so this is safe for the milestone gate, but a client
+  passing its token only as `api_key` would 401 and reconnect forever — the
+  exact failure this step exists to prevent. The Step 5 decision not to accept
+  a query-string credential stands; this is the cost of it.
+- `X-Emby-Authorization` and `X-MediaBrowser-Token` remain unit-tested and
+  unobserved (Step 5).
+Both would surface first on VidHub, which does not gate 0.0.1.
+
+**Trap hit this session, for the next one:**
+`docker compose up -d` without `-f docker-compose.test.yml` recreates Postgres
+with no published host port and silently breaks every integration test.
+`docker-compose.test.yml` documents this; it is still easy to walk into.
+Always bring the stack up with both files during development.
+
 ## 2026-08-26 — Step 5: compatibility discovery and auth
 
 **Completed:**
