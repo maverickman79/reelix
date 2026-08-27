@@ -67,6 +67,27 @@ stay scannable. Prune entries older than the current minor version into
 **Blocked:**
 - Nothing.
 
+**Field report — remote playback hit a real bandwidth ceiling:**
+- The Shield at a second house connects **directly** over Tailscale, not
+  through a relay, and the path still measured about **43 Mbit/s**.
+- Files up to roughly 5 GB direct-play fine over it. The 76 GB Fight Club
+  remux needs 73 Mbit/s sustained and stalls.
+- **Reelix behaved correctly.** It decided direct play from the device
+  profile, which is a true statement about the device: the Shield can decode
+  that file. Reelix has no knowledge of network conditions and made no claim
+  about them. Nothing here is a bug.
+- **This is the first concrete evidence for `NetworkConditions` as a playback
+  decision input**, which `docs/constitution.md` lists alongside
+  `DeviceCapabilities` and the rest. Until now that entry was a design
+  intention with nothing behind it. A decision engine reading capability
+  alone is right about the device and wrong about the outcome, and the
+  0.0.1 retrospective's argument for a binary hand-over-or-not decision
+  holds only while the link can carry whatever the device can decode.
+- **It is also the motivating case for transcoding.** The remaining answer
+  for a 73 Mbit/s file over a 43 Mbit/s link is to send fewer bits. Both
+  belong to a later milestone; recorded here so the requirement arrives with
+  a measurement attached rather than as an assumption.
+
 **Next step:**
 - Hardware: open Fight Club on the SK1 and confirm the track picker shows the
   names above, with the default audio track pre-selected. This is the one
@@ -124,10 +145,13 @@ stay scannable. Prune entries older than the current minor version into
   emitted as hardcoded `false`, and the superset test passed on a wrong
   answer because `false` is the right JSON type. Only the real client can
   confirm this one.
-- **Known wart:** PGS subtitles read `HDMV_PGS_SUBTITLE`, the uppercased
-  ffprobe codec. The capture only ever contained SUBRIP, so there is no
-  observed name for it, and inventing one is the thing this file keeps
-  refusing to do. Ugly but honest; 47 of Fight Club's tracks show it.
+- **Knowingly unpolished: PGS subtitles read `HDMV_PGS_SUBTITLE`**, the
+  uppercased ffprobe codec, on 47 of Fight Club's tracks. Left as-is by
+  decision. The capture only ever contained SUBRIP, so no observed string
+  pins a friendlier name, and inventing one would break the rule that has
+  kept this layer honest — the same rule that left DTS-HD MA as `DTS`.
+  Revisit if a future capture pins the real string; until then ugly and
+  correct beats tidy and invented.
 
 ## 2026-08-27 — 0.0.2: playback state
 
