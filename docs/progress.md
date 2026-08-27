@@ -21,6 +21,114 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-27 — 0.0.2: stream metadata
+
+**Completed:**
+- `internal/media/probe.go`: ffprobe already returned all of this under
+  `-show_streams`; the output struct never declared the fields. Language,
+  title, profile, level, pixel format, both frame rates, and the default /
+  forced / hearing-impaired dispositions. The invocation is unchanged.
+- `0006_stream_metadata.sql`: ten columns. Seven nullable — absence is an
+  answer — and three dispositions `NOT NULL DEFAULT false`, because ffprobe
+  always reports them so "not flagged" is a fact.
+- The migration ends with `UPDATE media_files SET probed_at = NULL`. That is
+  the whole re-scan trigger: nothing on disk changes, so no incremental
+  signal could find the staleness, and `probed_at` is the flag the scanner
+  already reads. One `POST /libraries/{id}/scan` re-probes everything through
+  the ordinary per-file path, resuming where it stopped if interrupted.
+- `internal/compat/jellyfin/tracklabel.go`: DisplayTitle composition and a
+  hand-written ISO 639 table, at the compat boundary.
+- Six allowances retired in `fixture_test.go`; `Level` narrowed to audio and
+  subtitle; `ReferenceFrameRate` kept with a rewritten reason.
+
+**Verified:**
+- `gofmt`, `go vet ./...` clean. Full suite green with a database and clean
+  without one.
+- **Fault-injected twice, both caught:** removing the migration's `UPDATE`
+  failed `TestStreamMetadataMigrationClearsProbedAt`; nulling Language, Title
+  and Profile in the DTO failed `TestItemDetailMatchesFixture` on every
+  stream carrying one — which is what shows the retired allowances are
+  load-bearing rather than removed.
+- **Live against the real library.** Migration 6 applied on restart; all six
+  files had `probed_at` cleared, one scan re-probed them, 136 stream rows
+  intact. 133 carry a language, 76 a title, 13 are default tracks, 9 are SDH.
+- **Fight Club renders.** 63 streams, 118,732 bytes, no client-side
+  exception. Video `2160p HEVC`, profile Main 10, level 153, yuv420p10le,
+  23.976 fps. Audio leads with `DTS-HD MA 5.1 - English - Default`, and the
+  four commentary tracks are named by who is speaking. All 57 subtitle tracks
+  are individually identifiable, including four SDH commentary tracks.
+  `DefaultAudioStreamIndex` is 1 and the two default streams are flagged.
+- Direct play unaffected: a range request at offset 5255045235 still answers
+  206.
+
+**In flight:**
+- Nothing.
+
+**Blocked:**
+- Nothing.
+
+**Next step:**
+- Hardware: open Fight Club on the SK1 and confirm the track picker shows the
+  names above, with the default audio track pre-selected. This is the one
+  completion criterion no test can reach — `IsDefault` was hardcoded `false`
+  until now and the fixture comparison could not see it, because `false` is
+  the same JSON type as `true`.
+- Then decide whether `hdmv_pgs_subtitle` gets a friendly name (see below).
+
+**Decisions made:**
+- **DisplayTitle composition lives at the compat boundary**, in
+  `tracklabel.go`. The string is a fact about what Jellyfin clients expect,
+  not about the media; a native interface reading the same columns would
+  compose a different label and should not have to take this one apart.
+  Clients depending on the exact shape argues for reproducing it faithfully,
+  not for relocating it.
+- **The containment rule is inferred from four data points**, and the file
+  says so where someone would change it. Parts join with " - " and a part the
+  track title already contains is dropped. It is the simplest rule that
+  reproduces all eight recorded strings; it is not knowledge of what the
+  reference server does. A ninth capture could contradict it — change the
+  rule to fit the evidence, do not reason about the implementation.
+  Reproduced from recorded JSON, never from Jellyfin source.
+- **The rule holds on data it never saw.** Fight Club's `DTS-HD MA 5.1` title
+  suppressed both the codec and the layout, exactly as the captured
+  `Surround AC3 5.1` did, and `English (SDH)` suppressed the language exactly
+  as `English SDH` did.
+- **`hearing_impaired` was carried**, beyond the original field list. It is
+  the only thing separating an SDH track from an ordinary one where both read
+  "English", and without it one recorded DisplayTitle was unreachable. Nine
+  tracks in the real library are flagged.
+- **Hand-written ISO 639 table, no new dependency.** `x/text/display` would
+  pull a CLDR table to answer what a few KB of Go answers, and promoting an
+  indirect dependency to direct needs more than convenience. Unlisted codes
+  fall back to the raw code; `und` renders nothing.
+- **Both frame rates are stored.** ffprobe reports two different things; they
+  agree on CFR content and diverge on VFR, so deriving one from the other
+  would be a guess made at write time.
+- **`ReferenceFrameRate` is not emitted.** The captures show all three equal,
+  but that is CFR content agreeing with itself, and what the reference server
+  means by "reference" is not something the traffic reveals.
+- **`Level` is emitted for video only.** The recorded 0 on audio and subtitle
+  streams is a non-nullable C# int with nothing in it, not a measurement.
+  Same reasoning corrected the subtitle geometry allowance, whose stated
+  reason claimed the recording held the video's dimensions; it holds 0.
+- **Video DisplayTitle omits the ` SDR` suffix** the reference server
+  appended. That needs colour metadata this change does not store, and
+  asserting SDR for a Dolby Vision remux would be worse than saying nothing.
+- **An allowance retires only when Reelix emits the field.** The compat tests
+  seed their own streams, so retiring one also means seeding a value — and
+  that seed is not the justification. The justification is the field
+  travelling ffprobe to schema to DTO, proved in four other packages, and the
+  comment above `absentInReelix` now says so. The seed edit and the proofs
+  are separate commits.
+- **`IsDefault` and `IsForced` retired no allowance.** They were already
+  emitted as hardcoded `false`, and the superset test passed on a wrong
+  answer because `false` is the right JSON type. Only the real client can
+  confirm this one.
+- **Known wart:** PGS subtitles read `HDMV_PGS_SUBTITLE`, the uppercased
+  ffprobe codec. The capture only ever contained SUBRIP, so there is no
+  observed name for it, and inventing one is the thing this file keeps
+  refusing to do. Ugly but honest; 47 of Fight Club's tracks show it.
+
 ## 2026-08-27 — 0.0.2: playback state
 
 **Completed:**
