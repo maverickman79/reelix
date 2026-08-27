@@ -21,6 +21,128 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-27 — jellyfin-web: the spinner, and five 404s triaged
+
+**Completed:**
+- `GET /DisplayPreferences/{prefsId}`, replacing the `default` literal. **This
+  was the spinner.** jellyfin-web's `setUserInfo` awaits
+  `/DisplayPreferences/usersettings` with no rejection handler, and
+  `localusersignedin` fires only on fulfilment — so the 404 stopped the
+  post-login chain before it ever reached `/UserViews`.
+- `POST /Sessions/Capabilities/Full`. **Included for cohesion, NOT because it
+  blocks anything** — jellyfin-web neither awaits this call nor handles its
+  rejection, so its 404 cost an unhandled promise rejection and nothing else.
+  It is the same login exchange and lands on an existing `SetCapabilities`.
+  Do not read its presence in the same commit as evidence it was blocking.
+- `GET /System/Endpoint` and `GET /Playback/BitrateTest` (second commit).
+- `GET /Branding/Configuration`, unauthenticated, byte-identical to the
+  reference.
+
+**Verified:**
+- `gofmt`, `go vet ./...` clean; full suite green with a database and without.
+  Note: **CLAUDE.md refers to "the project linter" and there is none** — no
+  config in the repo, nothing installed. `gofmt` and `go vet` are the whole
+  toolchain. Either add one deliberately or fix the wording.
+- Live through the nginx proxy: all five routes answer; branding matches the
+  reference byte for byte.
+- **The browser itself has not been re-driven.** The chain that was blocking
+  is exercised end to end by tests against the real server and database, but
+  whether the library renders needs a reload by someone with a browser on it.
+
+**How the shapes were established — and a correction to a stated premise:**
+
+The reference server was **not** running at the start of the session, contrary
+to what the task assumed. It was brought up. The Step 0 wizard is complete, so
+every `/Startup/*` route answers 401 and a throwaway account could not be made
+there without the admin password. A **pristine 10.11.8 instance** was therefore
+run alongside it on `:8098` with its own empty config — user `probe`, password
+`probe-probe-2026`, plus a `probe2` used to test user-scoping. It is a
+throwaway: `docker rm -f reelix-jellyfin-probe` and the scratchpad config are
+the whole of it. **The Step 0 instance was never modified.**
+
+None of the five routes appears in the Step 0 capture, because Wholphin calls
+none of them. Every shape here came from probing.
+
+**Two things probing caught that inference would have got wrong:**
+
+1. **`/Branding/Configuration` omits null strings rather than sending them.**
+   Setting branding on a reference instance and reading it back showed a null
+   dropped field by field while an empty string is emitted. Reelix has no
+   branding, so the entire correct response is `{"SplashscreenEnabled":false}`.
+   Writing all three fields — the obvious guess — sends a shape no real server
+   sends.
+2. **The DisplayPreferences key is CASE-SENSITIVE.** `default`, `DEFAULT` and
+   `Default` are three separate records with three different ids on a real
+   server. That is why the key is a path parameter and not a literal: a literal
+   would fold `/displaypreferences/DEFAULT` onto `default` and merge records
+   the reference keeps apart. **`routefold_test.go`'s expectation was wrong on
+   this and was corrected**, with the reason recorded in the test.
+
+**Decisions made:**
+- **The DisplayPreferences `Id` is derived, not reproduced.** The reference
+  computes it from the key by a hash that is *not* a plain MD5 (tested and
+  ruled out). Working the algorithm out would mean reconstructing a
+  server-side implementation detail, which is the wrong side of the clean-room
+  rule. Reelix reproduces the observable properties instead — stable per key,
+  distinct between keys, identical across users, UUID-shaped — and the client
+  only ever echoes the value back.
+- **Capabilities decoding is more lenient than the reference.** The reference
+  validates `SupportedCommands` against its enum and answers 400; Reelix stores
+  the strings. It acts on none of those commands in 0.0.1, so rejecting a
+  client for advertising a newer capability than our copy of the list would
+  break it over a value nothing reads.
+- **`/System/Endpoint` ignores `X-Forwarded-For`.** Behind a proxy it therefore
+  reports the proxy's network, not the caller's — the safe direction for a
+  header nothing authenticates, and wrong in exactly one way worth knowing.
+
+**A bug the new tests caught:** an absent JSON array in the capabilities body
+decodes to a nil slice, which binds as SQL NULL against two `NOT NULL` columns
+— a 500 for a body the reference answers 204 to. The query-parameter route
+could never hit it, because `trimmed()` never returns nil.
+
+**Still open — the `/socket` 401, deliberately not decided here.**
+
+Reelix answers 401; the reference answers **403** unauthenticated. Matching the
+status would **not** make the socket connect, because Reelix rejects for a
+different reason: the credential arrives somewhere `requireAuth` does not read.
+The socket is also **not** what blocks the render — `ensureWebSocket` is
+fire-and-forget inside a try/catch — so the ~45s cycle in the log is
+jellyfin-web's own reconnect timer, not a symptom.
+
+The evidence base for whenever that decision is taken, so it need not be
+re-derived:
+
+| Request to the reference `/socket` | Result |
+|---|---|
+| no credentials | 403 |
+| `Authorization` header, valid token | 101 |
+| **`?api_key=` valid token** | **101** |
+| `?ApiKey=` valid token | 101 (case-insensitive) |
+| `?api_key=` invalid token | 403 |
+| `?api_key=` valid + foreign `Origin` | **101** |
+| header auth + foreign `Origin` | **101** |
+
+Three conclusions follow. **`api_key` is a server-wide credential channel on
+the reference, not a socket-specific exception** — `/System/Endpoint?api_key=`
+answers 200 too. **The reference performs no Origin check on the socket at
+all**, so Reelix is already strictly stricter there, and would remain so.
+**The convention assumed from Wholphin does not hold for browsers**: Wholphin
+sent a header because OkHttp can, while jellyfin-web builds
+`?api_key=<token>&deviceId=<id>` literally, because a browser cannot set
+headers on a WebSocket handshake.
+
+So allowing `api_key` on `/socket` would be **matching** the reference rather
+than inventing something — but it still means relaxing a deliberate decision
+documented on `requireAuth`, and that stays a separate task with its own
+reasoning. `requireAuth` was **not** touched by this work.
+
+**Next step:** reload jellyfin-web and confirm the library renders. If it does,
+the socket becomes its own task on the evidence above. If it does not, the next
+thing to read is the browser console — the remaining candidates are all
+client-side, and the server-side 404s from this session are gone.
+
+---
+
 ## 2026-08-27 — 0.0.2: case-insensitive routes, and a bug that was not what it looked like
 
 **Completed:**
