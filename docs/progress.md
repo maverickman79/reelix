@@ -21,6 +21,82 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-27 — Gangland: the container asymmetry was half right
+
+**Completed:**
+- `mediaSourceContainer`, used by the media source DTO only. `containerName`
+  and the item-level DTO are unchanged.
+- `queryValue`: query parameter lookup ignoring case and underscores, used for
+  the stream credentials and for BitrateTest's `Size`.
+
+**The bug, which was two bugs.** jellyfin-web direct-played an MP4 and
+requested `/Videos/{id}/stream.mov,mp4,m4a,3gp,3g2,mj2` → 401. Both faults had
+to be fixed for playback; each was fault-injected separately and caught by its
+own test.
+
+**1. The media source reported ffprobe's raw list.** Probing a real 10.11.8
+with one file per extension — all three of the mp4 family probing as the same
+ffprobe string — shows the reference splits the two levels:
+
+| extension | `Item.Container` | `MediaSource.Container` |
+|---|---|---|
+| `.mp4` | `mov,mp4,m4a,3gp,3g2,mj2` | `mp4` |
+| `.m4v` | `mov,mp4,m4a,3gp,3g2,mj2` | **`mov`** |
+| `.mov` | `mov,mp4,m4a,3gp,3g2,mj2` | `mov` |
+| `.mkv` | `mkv` | `mkv` |
+
+**The Step 6 asymmetry was half right and should not be recorded as a
+mistake.** `containerName` matches the reference exactly at the item level,
+including leaving the mp4 list alone. What was wrong is that one function was
+applied at *both* levels. Item-level behaviour is unchanged and now has a test,
+because "tidying" it to `mp4` would diverge from a field the fixtures record.
+
+The rule fitting all four observations: **the extension when it appears in the
+list, otherwise the first token.** `.m4v` → `mov` is the case that rules out
+the obvious "just use the extension" shortcut.
+
+**2. The 401 rather than a 404, which is the more general finding.** The
+extension normalisation was never at fault: `normalizeStreamSpelling` rejects
+only a *dotted* multi-part extension, so the comma list came off cleanly and
+the route matched. `authorizeStream` then could not see the credential —
+**jellyfin-web sends `Tag` and `ApiKey`, Wholphin sends `tag`, the convention
+is `api_key`, and Go's query lookup is an exact map hit.** The request carried
+a valid capability and was answered 401.
+
+A real server accepts `api_key`, `API_KEY`, `ApiKey`, `apikey`, `APIKEY` and
+`Api_Key` alike — all probed. `queryValue` now matches that, and replaces the
+two-spelling hack on `Size` from the previous session, which was the same bug
+found by luck rather than by looking.
+
+**This is a class, not an incident.** Any query parameter read by exact name is
+fragile in the same way. The credential parameters and `Size` are converted;
+`browseQuery` and the `client`/`userId` reads are NOT, because every observed
+client agrees on those spellings. Whoever sees a mystery "parameter ignored"
+should suspect this first.
+
+**Decisions made:**
+- **The capability check was NOT relaxed.** The reference server was probed
+  serving these bytes to a request carrying no credential at all, and even one
+  carrying a *wrong* tag — `/Videos/{id}/stream` is effectively unauthenticated
+  on a real Jellyfin. Reelix is deliberately stricter, and
+  `TestStreamStillRefusesABadCredential` pins that this fix changed the
+  spelling of the lookup and not the model. Do not "align with the reference"
+  here without deciding to give up the capability model.
+
+**Verified:** `gofmt`, `go vet ./...` clean; full suite green. Both fixes
+fault-injected independently and each caught; under the credential injection
+the Wholphin spelling stayed green, which is what shows the test discriminates
+rather than just failing.
+
+**Not verified:** Gangland actually playing in a browser. The URL shape and the
+credential path are covered end to end by tests against the real server and
+database, but the final confirmation is a play attempt.
+
+**Next step:** play Gangland in jellyfin-web. Then the `/socket` decision,
+which the previous entry left evidence for and this session did not touch.
+
+---
+
 ## 2026-08-27 — jellyfin-web: the spinner, and five 404s triaged
 
 **Completed:**
