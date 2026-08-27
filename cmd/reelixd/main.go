@@ -110,6 +110,7 @@ func run() error {
 	}
 
 	sessions := service.NewSessionService(pool)
+	media := service.NewMediaService(pool)
 
 	nativeAPI := v1.New(
 		service.NewAuthService(pool),
@@ -117,7 +118,7 @@ func run() error {
 		scans,
 	)
 
-	compatAPI := jellyfin.New(sessions, log)
+	compatAPI := jellyfin.New(sessions, media, log)
 
 	srv := server.New(cfg.HTTP, log, version, nativeAPI, compatAPI)
 	if err := srv.Run(ctx); err != nil {

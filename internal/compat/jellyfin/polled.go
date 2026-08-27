@@ -81,18 +81,6 @@ func (a *API) handleResumeItems(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, r, http.StatusOK, emptyQueryResult())
 }
 
-// handleLatestItems serves GET /Items/Latest.
-//
-// A bare array, not a QueryResult — the recorded response is a top-level
-// list, and the SDK's generated type expects one.
-//
-// Empty for now. The reference server returned six movies here, and this must
-// be revisited once /Items exists: an empty Latest row on a populated server
-// is wrong, it is just not wrong in a way that stops the client.
-func (a *API) handleLatestItems(w http.ResponseWriter, r *http.Request) {
-	a.writeJSON(w, r, http.StatusOK, emptyList())
-}
-
 // handleNextUp serves GET /Shows/NextUp.
 //
 // Permanently empty in this milestone rather than unimplemented: TV series

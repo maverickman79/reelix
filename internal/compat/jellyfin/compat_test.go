@@ -95,7 +95,7 @@ func newHarness(t *testing.T) *harness {
 		t.Fatalf("creating user: %v", err)
 	}
 
-	api := New(service.NewSessionService(pool), log)
+	api := New(service.NewSessionService(pool), service.NewMediaService(pool), log)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		api.Routes().ServeHTTP(w, r.WithContext(logging.WithLogger(r.Context(), log)))
@@ -413,7 +413,12 @@ func TestCapturedFlowInOrder(t *testing.T) {
 		{16, http.MethodGet, "/LiveTv/Recordings/Folders", "GET_LiveTv_Recordings_Folders", 200},
 		{19, http.MethodGet, "/UserItems/Resume", "GET_UserItems_Resume", 200},
 		{21, http.MethodGet, "/Items/Latest", "GET_Items_Latest", 200},
+		{13, http.MethodGet, "/UserViews", "GET_UserViews", 200},
 		{22, http.MethodGet, "/Shows/NextUp", "GET_Shows_NextUp", 200},
+		// Call 33 browses the library. This harness seeds no media, so the
+		// answer is an empty page; the populated comparison against every
+		// recorded /Items call lives in items_test.go.
+		{33, http.MethodGet, "/Items", "GET_Items", 200},
 		// Call 123 in the capture is the WebSocket upgrade, which cannot be
 		// replayed through this HTTP client. See socket_test.go.
 	}

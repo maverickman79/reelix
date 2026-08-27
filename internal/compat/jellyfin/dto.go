@@ -255,21 +255,31 @@ type quickConnectResult struct {
 
 // queryResult is the envelope Jellyfin wraps most item lists in.
 //
-// Items is []any while the routes returning it are all empty. The second half
-// of Step 6 introduces the item DTO and will want this typed; that is a change
-// to make when there is something to put in it, not before.
-type queryResult struct {
-	Items            []any `json:"Items"`
-	TotalRecordCount int   `json:"TotalRecordCount"`
-	StartIndex       int   `json:"StartIndex"`
+// Generic over the item type: the routes that carry nothing use
+// queryResult[any], while /Items and /UserViews carry their own DTOs.
+type queryResult[T any] struct {
+	Items            []T `json:"Items"`
+	TotalRecordCount int `json:"TotalRecordCount"`
+	StartIndex       int `json:"StartIndex"`
 }
 
 // emptyQueryResult is a well-formed empty list.
 //
 // Items is a non-nil slice: a nil one marshals as null, and the SDK's
 // generated type declares the array non-nullable.
-func emptyQueryResult() queryResult {
-	return queryResult{Items: emptyList()}
+func emptyQueryResult() queryResult[any] {
+	return queryResult[any]{Items: emptyList()}
+}
+
+// themeMediaResult is GET /Items/{id}/ThemeSongs.
+//
+// The same envelope with the id it was asked about attached, which is what
+// the recorded response carried.
+type themeMediaResult struct {
+	OwnerID          string `json:"OwnerId"`
+	Items            []any  `json:"Items"`
+	TotalRecordCount int    `json:"TotalRecordCount"`
+	StartIndex       int    `json:"StartIndex"`
 }
 
 // displayPreferences is GET /DisplayPreferences/default.

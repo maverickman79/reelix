@@ -30,13 +30,15 @@ const (
 // API serves the Jellyfin-compatible surface.
 type API struct {
 	sessions *service.SessionService
+	media    *service.MediaService
 	log      *slog.Logger
 }
 
 // New builds the compatibility API.
-func New(sessions *service.SessionService, log *slog.Logger) *API {
+func New(sessions *service.SessionService, media *service.MediaService, log *slog.Logger) *API {
 	return &API{
 		sessions: sessions,
+		media:    media,
 		log:      logging.Component(log, "compat"),
 	}
 }
@@ -75,6 +77,25 @@ func (a *API) Routes() http.Handler {
 	mux.HandleFunc("GET /Items/Latest", a.requireAuth(a.handleLatestItems))
 	mux.HandleFunc("GET /Shows/NextUp", a.requireAuth(a.handleNextUp))
 	mux.HandleFunc("GET /LiveTv/Recordings/Folders", a.requireAuth(a.handleRecordingFolders))
+
+	// Browse. /UserViews is what a home screen is built from; without it the
+	// client cannot render one and restarts instead.
+	mux.HandleFunc("GET /UserViews", a.requireAuth(a.handleUserViews))
+	mux.HandleFunc("GET /Items", a.requireAuth(a.handleItems))
+	mux.HandleFunc("GET /Items/{id}", a.requireAuth(a.handleItem))
+
+	// Requested when a movie is opened. Empty in the recorded shape rather
+	// than absent, for the same reason /UserViews is here.
+	mux.HandleFunc("GET /Items/{id}/Intros", a.requireAuth(a.handleItemIntros))
+	mux.HandleFunc("GET /Items/{id}/Similar", a.requireAuth(a.handleSimilarItems))
+	mux.HandleFunc("GET /Items/{id}/SpecialFeatures", a.requireAuth(a.handleSpecialFeatures))
+	mux.HandleFunc("GET /Items/{id}/ThemeSongs", a.requireAuth(a.handleThemeSongs))
+	mux.HandleFunc("GET /MediaSegments/{id}", a.requireAuth(a.handleMediaSegments))
+
+	// No artwork exists in 0.0.1. Both spellings of the route are registered
+	// because clients build image URLs with and without an index.
+	mux.HandleFunc("GET /Items/{id}/Images/{type}", a.requireAuth(a.handleItemImage))
+	mux.HandleFunc("GET /Items/{id}/Images/{type}/{index}", a.requireAuth(a.handleItemImage))
 
 	return mux
 }
