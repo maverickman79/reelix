@@ -95,7 +95,8 @@ func newHarness(t *testing.T) *harness {
 		t.Fatalf("creating user: %v", err)
 	}
 
-	api := New(service.NewSessionService(pool), service.NewMediaService(pool), log)
+	api := New(service.NewSessionService(pool), service.NewMediaService(pool),
+		service.NewPlaybackService(pool), log)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		api.Routes().ServeHTTP(w, r.WithContext(logging.WithLogger(r.Context(), log)))

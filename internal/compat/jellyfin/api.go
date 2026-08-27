@@ -31,14 +31,17 @@ const (
 type API struct {
 	sessions *service.SessionService
 	media    *service.MediaService
+	playback *service.PlaybackService
 	log      *slog.Logger
 }
 
 // New builds the compatibility API.
-func New(sessions *service.SessionService, media *service.MediaService, log *slog.Logger) *API {
+func New(sessions *service.SessionService, media *service.MediaService,
+	playback *service.PlaybackService, log *slog.Logger) *API {
 	return &API{
 		sessions: sessions,
 		media:    media,
+		playback: playback,
 		log:      logging.Component(log, "compat"),
 	}
 }
@@ -96,6 +99,16 @@ func (a *API) Routes() http.Handler {
 	// because clients build image URLs with and without an index.
 	mux.HandleFunc("GET /Items/{id}/Images/{type}", a.requireAuth(a.handleItemImage))
 	mux.HandleFunc("GET /Items/{id}/Images/{type}/{index}", a.requireAuth(a.handleItemImage))
+
+	// Playback. The stream endpoint authenticates itself: the client fetches
+	// it from a media player that sends no credentials, so it accepts a
+	// capability tag as well as a token. See authorizeStream.
+	mux.HandleFunc("POST /Items/{id}/PlaybackInfo", a.requireAuth(a.handlePlaybackInfo))
+	mux.HandleFunc("GET /Videos/{id}/stream", a.handleVideoStream)
+
+	mux.HandleFunc("POST /Sessions/Playing", a.requireAuth(a.handlePlaybackStarted))
+	mux.HandleFunc("POST /Sessions/Playing/Progress", a.requireAuth(a.handlePlaybackProgress))
+	mux.HandleFunc("POST /Sessions/Playing/Stopped", a.requireAuth(a.handlePlaybackStopped))
 
 	return mux
 }

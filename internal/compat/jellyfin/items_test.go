@@ -353,8 +353,9 @@ func TestItemDetailCarriesThePlayableFile(t *testing.T) {
 	if source.Path != "" {
 		t.Errorf("source Path = %q, want it empty", source.Path)
 	}
-	if source.Name != "Idiocracy.mkv" {
-		t.Errorf("source Name = %q, want the filename", source.Name)
+	// The extension is dropped, as the reference server did.
+	if source.Name != "Idiocracy" {
+		t.Errorf("source Name = %q, want the filename without its extension", source.Name)
 	}
 	if source.Size != 5255910143 {
 		t.Errorf("source Size = %d", source.Size)

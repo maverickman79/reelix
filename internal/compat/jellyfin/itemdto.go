@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"uuid"
 
@@ -460,9 +461,10 @@ func newMediaSourceDTO(detail service.ItemDetail, etag string, streams []mediaSt
 		Path:      "",
 		Type:      "Default",
 		Container: containerName(file.Container),
-		// The filename is release information, not filesystem layout, and a
-		// client displays it when a user picks between versions.
-		Name:                                file.Filename,
+		// The filename without its extension, as the reference server sent
+		// it. This is release information rather than filesystem layout, and
+		// a client displays it when a user picks between versions.
+		Name:                                strings.TrimSuffix(file.Filename, filepath.Ext(file.Filename)),
 		IsRemote:                            false,
 		ETag:                                etag,
 		RunTimeTicks:                        ticks,
