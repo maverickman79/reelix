@@ -49,12 +49,14 @@ func New(sessions *service.SessionService, media *service.MediaService,
 // Routes returns the handler for the compatibility surface.
 //
 // These mount at the server root, not under a prefix: Jellyfin clients build
-// absolute paths like /System/Info/Public and cannot be told otherwise.
+// absolute paths like /System/Info/Public and cannot be told otherwise. The
+// /emby and /mediabrowser aliases a real server also answers are handled by
+// withLegacyPaths ahead of this mux; see routes.go.
 //
-// Matching is case-sensitive, which ASP.NET's is not. Wholphin sends the exact
-// casing recorded in the capture, so this is correct for the 0.0.1 gate; a
-// client that lowercases its paths would 404. Noted as a known gap rather than
-// papered over with a normalising layer nothing has yet needed.
+// Matching is still case-sensitive, which ASP.NET's is not. No observed client
+// varies its casing, so this remains a known gap rather than a fault, and it
+// is being closed as its own change: folding literal segments while leaving
+// path parameters alone needs a route trie, not a string operation.
 func (a *API) Routes() http.Handler {
 	mux := http.NewServeMux()
 
@@ -106,11 +108,20 @@ func (a *API) Routes() http.Handler {
 	mux.HandleFunc("POST /Items/{id}/PlaybackInfo", a.requireAuth(a.handlePlaybackInfo))
 	mux.HandleFunc("GET /Videos/{id}/stream", a.handleVideoStream)
 
+	// The stream.{container} spelling is not registered here: net/http's mux
+	// requires a wildcard to be a whole path segment, so it is normalised
+	// onto this route by withLegacyPaths instead. See normalizeStreamSpelling.
+
 	mux.HandleFunc("POST /Sessions/Playing", a.requireAuth(a.handlePlaybackStarted))
 	mux.HandleFunc("POST /Sessions/Playing/Progress", a.requireAuth(a.handlePlaybackProgress))
 	mux.HandleFunc("POST /Sessions/Playing/Stopped", a.requireAuth(a.handlePlaybackStopped))
 
-	return mux
+	// The legacy /Users/{userId}/... spellings, which carry the user in the
+	// path rather than in the token. Undocumented in the OpenAPI spec and
+	// still served by a real 10.11; see routes.go.
+	a.registerUserScopedRoutes(mux)
+
+	return withLegacyPaths(mux)
 }
 
 // ctxKey is unexported so no other package can collide with it.
