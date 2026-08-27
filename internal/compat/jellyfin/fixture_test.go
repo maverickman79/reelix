@@ -111,6 +111,25 @@ func (f fixture) recordedJSON(t *testing.T) any {
 //     such distinction and the recorded values would make it arbitrary.
 //   - null: the key must be present, with no constraint on its type. A
 //     recorded null says the field exists and nothing about what it holds.
+//
+// Three refinements exist for data the recorded server had and Reelix does
+// not. Each is narrow and each is named:
+//
+//   - dataObjects: objects whose KEYS are data rather than schema —
+//     ImageTags is keyed by image id, ImageBlurHashes by hash. Requiring
+//     those keys would require Reelix to invent an image id it would then
+//     have to 404 on. The value must still be an object.
+//
+//   - arrays of typed objects are matched BY TYPE. MediaStreams holds video,
+//     audio and subtitle streams with different key sets, and checking an
+//     audio stream against the recorded video stream at index 0 fails it for
+//     missing Width and Profile. Comparing like with like is stricter than
+//     the general rule, not looser.
+//
+//   - absentInReelix: leaf fields Reelix returns as null because 0.0.1
+//     excludes the subsystem that would fill them. Every entry states why,
+//     enforced at init: an allowance without a reason panics the test binary
+//     rather than quietly widening the contract.
 func assertSuperset(t *testing.T, want, got any) {
 	t.Helper()
 
@@ -121,6 +140,169 @@ func assertSuperset(t *testing.T, want, got any) {
 		t.Errorf("response is not a structural superset of the recorded Jellyfin response:\n  - %s",
 			strings.Join(problems, "\n  - "))
 	}
+}
+
+// allowance records why a field the reference server filled is null here.
+type allowance struct{ reason string }
+
+// because builds an allowance. It panics on an empty reason, which is what
+// makes the reason mandatory rather than customary: this list is the piece
+// most likely to erode into "the test was failing, so I added it".
+func because(reason string) allowance {
+	if strings.TrimSpace(reason) == "" {
+		panic("an allowance must state why the field is absent")
+	}
+	return allowance{reason: reason}
+}
+
+// absentInReelix are the fields Reelix answers with null where the reference
+// server had a value.
+//
+// A "$..Field" key matches that field wherever it appears. Nothing is listed
+// here because a test was inconvenient; every entry is a subsystem 0.0.1
+// excludes, and each one disappears when that subsystem arrives.
+var absentInReelix = map[string]allowance{
+	// Metadata scraping is excluded from 0.0.1, so nothing describes a movie
+	// beyond what its filename and container say.
+	"$..Overview":        because("no metadata provider in 0.0.1; the overview is genuinely unknown"),
+	"$..CommunityRating": because("no metadata provider in 0.0.1; a fabricated 0 would render as a zero-star rating"),
+	"$..CriticRating":    because("no metadata provider in 0.0.1"),
+	"$..OfficialRating":  because("no metadata provider in 0.0.1"),
+	"$..PremiereDate":    because("no metadata provider in 0.0.1; a fabricated date would render as year 1"),
+	"$..OriginalTitle":   because("no metadata provider in 0.0.1; only the filename-derived title is known"),
+	"$..ProductionYear":  because("parsed from the filename, so null when the filename carries no year"),
+
+	// Artwork downloading is excluded, so there is no image to measure.
+	"$..PrimaryImageAspectRatio": because("no artwork in 0.0.1, so there is no primary image to have a ratio"),
+
+	// The scanner stores index, kind, codec, dimensions, channels and
+	// bitrate. Everything else on a stream needs a wider probe, a migration
+	// and a re-scan — a 0.0.2 change.
+	"$..Language":                 because("the scanner does not record stream language yet (0.0.2)"),
+	"$..Title":                    because("the scanner does not record container track titles yet (0.0.2)"),
+	"$..ChannelLayout":            because("the scanner does not record channel layout yet (0.0.2)"),
+	"$..SampleRate":               because("the scanner does not record sample rate yet (0.0.2)"),
+	"$..Profile":                  because("the scanner does not record codec profile yet (0.0.2)"),
+	"$..Level":                    because("the scanner does not record codec level yet (0.0.2)"),
+	"$..BitDepth":                 because("the scanner does not record bit depth yet (0.0.2)"),
+	"$..PixelFormat":              because("the scanner does not record pixel format yet (0.0.2)"),
+	"$..RefFrames":                because("the scanner does not record reference frames yet (0.0.2)"),
+	"$..NalLengthSize":            because("the scanner does not record NAL length size yet (0.0.2)"),
+	"$..TimeBase":                 because("the scanner does not record the stream time base yet (0.0.2)"),
+	"$..AverageFrameRate":         because("the scanner does not record frame rates yet (0.0.2)"),
+	"$..RealFrameRate":            because("the scanner does not record frame rates yet (0.0.2)"),
+	"$..ReferenceFrameRate":       because("the scanner does not record frame rates yet (0.0.2)"),
+	"$..ColorSpace":               because("the scanner does not record colour metadata yet (0.0.2)"),
+	"$..ColorTransfer":            because("the scanner does not record colour metadata yet (0.0.2)"),
+	"$..ColorPrimaries":           because("the scanner does not record colour metadata yet (0.0.2)"),
+	"$..IsAVC":                    because("the scanner does not record whether a stream is AVC yet (0.0.2)"),
+	"$..IsAnamorphic":             because("the scanner does not record anamorphic flags yet (0.0.2)"),
+	"$..BitRate":                  because("ffprobe reports no bitrate for some streams; null rather than a guess"),
+	"$..LocalizedDefault":         because("Reelix does not localise track labels; the client has its own strings"),
+	"$..LocalizedExternal":        because("Reelix does not localise track labels"),
+	"$..LocalizedForced":          because("Reelix does not localise track labels"),
+	"$..LocalizedHearingImpaired": because("Reelix does not localise track labels"),
+	"$..LocalizedUndefined":       because("Reelix does not localise track labels"),
+
+	// The reference server reports the video's dimensions on image-based
+	// subtitle tracks. Reelix does not probe subtitle geometry, and a video
+	// stream's dimensions are still required — this covers subtitles only.
+	"$..MediaStreams[Subtitle].Width":  because("the scanner does not probe subtitle geometry (0.0.2)"),
+	"$..MediaStreams[Subtitle].Height": because("the scanner does not probe subtitle geometry (0.0.2)"),
+
+	// Playback state arrives with Step 7.
+	"$..LastPlayedDate": because("no playback state until Step 7; nothing has ever been played"),
+
+	// A library is the top of the tree in Reelix.
+	"$..ParentId": because("Reelix has no folder above a library, and an invented root id would resolve to nothing"),
+
+	// The constitution forbids returning filesystem layout.
+	"$..Path": because("the constitution forbids leaking filesystem paths through an API"),
+}
+
+// dataObjects are recorded objects whose keys are data rather than schema.
+var dataObjects = map[string]allowance{
+	"$..ImageTags":           because("keyed by image id; requiring one would mean inventing an image Reelix cannot serve"),
+	"$..ImageBlurHashes":     because("keyed by image hash, for images Reelix does not have"),
+	"$..ProviderIds":         because("keyed by metadata provider, and 0.0.1 has none"),
+	"$..Trickplay":           because("keyed by resolution; trickplay is excluded from 0.0.1"),
+	"$..RequiredHttpHeaders": because("a header map, empty for a file Reelix serves directly"),
+}
+
+// allowed reports whether path is covered by one of the named lists.
+//
+// A key is either an exact normalised path, or a "$.." prefix matching any
+// path that ends in the rest of it: "$..Overview" covers the field wherever
+// it appears, "$..MediaStreams[Subtitle].Width" only on subtitle streams.
+func allowed(list map[string]allowance, path string) bool {
+	normalized := normalizePath(path)
+	if _, ok := list[normalized]; ok {
+		return true
+	}
+
+	for key := range list {
+		rest, found := strings.CutPrefix(key, "$..")
+		if found && strings.HasSuffix(normalized, "."+rest) {
+			return true
+		}
+	}
+	return false
+}
+
+// normalizePath makes a walked path comparable to an allowance key.
+//
+// A numeric index becomes "[]", so one entry covers every element of a list.
+// An index the by-type rule labelled — "[2:Subtitle]" — keeps the label and
+// loses the number, so an allowance can name a kind of element without
+// naming its position.
+func normalizePath(path string) string {
+	var b strings.Builder
+
+	for i := 0; i < len(path); i++ {
+		if path[i] != '[' {
+			b.WriteByte(path[i])
+			continue
+		}
+
+		end := strings.IndexByte(path[i:], ']')
+		if end < 0 {
+			b.WriteByte(path[i])
+			continue
+		}
+
+		inner := path[i+1 : i+end]
+		if _, label, labelled := strings.Cut(inner, ":"); labelled {
+			b.WriteString("[" + label + "]")
+		} else {
+			b.WriteString("[]")
+		}
+		i += end
+	}
+	return b.String()
+}
+
+// recordedByType indexes an array of typed objects by their Type.
+//
+// It returns false unless every recorded element is an object carrying a
+// non-empty string Type, so the rule applies only where the data really is
+// heterogeneous rather than by accident.
+func recordedByType(want []any) (map[string]any, bool) {
+	byType := make(map[string]any, len(want))
+
+	for _, elem := range want {
+		obj, ok := elem.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		name, ok := obj["Type"].(string)
+		if !ok || name == "" {
+			return nil, false
+		}
+		if _, seen := byType[name]; !seen {
+			byType[name] = obj
+		}
+	}
+	return byType, len(byType) > 0
 }
 
 // compare walks want and got in parallel, appending a message per divergence.
@@ -140,6 +322,11 @@ func compare(problems *[]string, path string, want, got any) {
 		g, ok := got.(map[string]any)
 		if !ok {
 			*problems = append(*problems, fmt.Sprintf("%s: expected an object, got %s", path, jsonType(got)))
+			return
+		}
+
+		// An object whose keys are data constrains the type and nothing more.
+		if allowed(dataObjects, path) {
 			return
 		}
 
@@ -169,6 +356,33 @@ func compare(problems *[]string, path string, want, got any) {
 			// A recorded empty array says only that the field is a list.
 			return
 		}
+
+		// Heterogeneous lists are matched by Type: an audio stream must be
+		// checked against the recorded audio stream, not against whichever
+		// stream happened to be first.
+		if byType, ok := recordedByType(w); ok {
+			for i, elem := range g {
+				obj, isObject := elem.(map[string]any)
+				if !isObject {
+					*problems = append(*problems, fmt.Sprintf("%s[%d]: expected an object, got %s",
+						path, i, jsonType(elem)))
+					continue
+				}
+
+				name, _ := obj["Type"].(string)
+				recorded, found := byType[name]
+				if !found {
+					*problems = append(*problems, fmt.Sprintf(
+						"%s[%d]: no recorded element of type %q to compare against", path, i, name))
+					continue
+				}
+				// The type is carried in the path so that a failure names
+				// the kind of stream, and so that an allowance can be
+				// written for one type without covering the others.
+				compare(problems, fmt.Sprintf("%s[%d:%s]", path, i, name), recorded, elem)
+			}
+			return
+		}
 		// Every element of got must match the recorded element's shape, not
 		// just the first: a list whose later entries are malformed is exactly
 		// the bug a first-element-only check would wave through.
@@ -177,6 +391,11 @@ func compare(problems *[]string, path string, want, got any) {
 		}
 
 	default:
+		// A field Reelix cannot fill is null, and the reason is on record.
+		if got == nil && allowed(absentInReelix, path) {
+			return
+		}
+
 		if jsonType(want) != jsonType(got) {
 			*problems = append(*problems, fmt.Sprintf("%s: recorded %s, got %s",
 				path, jsonType(want), jsonType(got)))
@@ -301,5 +520,191 @@ func TestAssertSupersetReportsPath(t *testing.T) {
 	}
 	if !strings.Contains(problems[0], "$.User.Policy.IsAdministrator") {
 		t.Errorf("problem does not name the field: %s", problems[0])
+	}
+}
+
+// problemsFor runs the comparison and returns what it found.
+func problemsFor(t *testing.T, want, got string) []string {
+	t.Helper()
+
+	var w, g any
+	if err := json.Unmarshal([]byte(want), &w); err != nil {
+		t.Fatalf("bad want json: %v", err)
+	}
+	if err := json.Unmarshal([]byte(got), &g); err != nil {
+		t.Fatalf("bad got json: %v", err)
+	}
+
+	var problems []string
+	compare(&problems, "$", w, g)
+	return problems
+}
+
+// TestStreamsAreMatchedByType pins the rule that fixes a real bug: MediaStreams
+// holds video, audio and subtitle streams with different key sets, and the
+// general array rule checked every one of them against the recorded video
+// stream at index 0.
+func TestStreamsAreMatchedByType(t *testing.T) {
+	// A recording with a wide video stream and a narrow audio one.
+	const recorded = `{"MediaStreams":[
+		{"Type":"Video","Codec":"h264","Width":1920,"Height":1080,"Profile":"High"},
+		{"Type":"Audio","Codec":"eac3","Channels":6}
+	]}`
+
+	t.Run("an audio stream is not judged against the video stream", func(t *testing.T) {
+		// Before this rule, the audio stream was failed for missing Width,
+		// Height and Profile — fields no audio stream has ever carried.
+		got := `{"MediaStreams":[
+			{"Type":"Video","Codec":"h264","Width":1920,"Height":1080,"Profile":"High"},
+			{"Type":"Audio","Codec":"eac3","Channels":6}
+		]}`
+		if p := problemsFor(t, recorded, got); len(p) > 0 {
+			t.Errorf("expected a match, got: %s", strings.Join(p, "; "))
+		}
+	})
+
+	t.Run("a genuinely incomplete audio stream still fails", func(t *testing.T) {
+		got := `{"MediaStreams":[
+			{"Type":"Video","Codec":"h264","Width":1920,"Height":1080,"Profile":"High"},
+			{"Type":"Audio","Codec":"eac3"}
+		]}`
+		p := problemsFor(t, recorded, got)
+		if len(p) != 1 || !strings.Contains(p[0], "[1:Audio].Channels") {
+			t.Errorf("expected the audio stream's missing Channels, got: %v", p)
+		}
+	})
+
+	t.Run("an incomplete video stream still fails", func(t *testing.T) {
+		// The rule must not have made the video stream easier to satisfy.
+		got := `{"MediaStreams":[{"Type":"Video","Codec":"h264","Width":1920,"Height":1080}]}`
+		p := problemsFor(t, recorded, got)
+		if len(p) != 1 || !strings.Contains(p[0], "[0:Video].Profile") {
+			t.Errorf("expected the video stream's missing Profile, got: %v", p)
+		}
+	})
+
+	t.Run("a type the recording never carried is reported", func(t *testing.T) {
+		got := `{"MediaStreams":[{"Type":"EmbeddedImage","Codec":"mjpeg"}]}`
+		p := problemsFor(t, recorded, got)
+		if len(p) != 1 || !strings.Contains(p[0], `no recorded element of type "EmbeddedImage"`) {
+			t.Errorf("expected the unrecorded type to be reported, got: %v", p)
+		}
+	})
+}
+
+// TestDataObjectsConstrainTheTypeOnly checks the rule for objects whose keys
+// are data — requiring them would mean inventing an image id Reelix would
+// then have to 404 on.
+func TestDataObjectsConstrainTheTypeOnly(t *testing.T) {
+	t.Run("keys need not match", func(t *testing.T) {
+		want := `{"ImageTags":{"Primary":"8c613f9d","Logo":"b1609847"}}`
+		if p := problemsFor(t, want, `{"ImageTags":{}}`); len(p) > 0 {
+			t.Errorf("expected an empty tag map to pass, got: %s", strings.Join(p, "; "))
+		}
+	})
+
+	t.Run("it must still be an object", func(t *testing.T) {
+		want := `{"ImageTags":{"Primary":"8c613f9d"}}`
+		p := problemsFor(t, want, `{"ImageTags":null}`)
+		if len(p) != 1 || !strings.Contains(p[0], "expected an object") {
+			t.Errorf("expected a null tag map to fail, got: %v", p)
+		}
+	})
+
+	t.Run("an ordinary object still needs its keys", func(t *testing.T) {
+		want := `{"UserData":{"PlayCount":0,"Key":"x"}}`
+		p := problemsFor(t, want, `{"UserData":{}}`)
+		if len(p) != 2 {
+			t.Errorf("expected both missing fields to be reported, got: %v", p)
+		}
+	})
+}
+
+// TestAbsenceNeedsAnAllowance checks the third rule, and its limits.
+func TestAbsenceNeedsAnAllowance(t *testing.T) {
+	t.Run("an allowed field may be null", func(t *testing.T) {
+		if p := problemsFor(t, `{"Overview":"a film"}`, `{"Overview":null}`); len(p) > 0 {
+			t.Errorf("expected the allowance to apply, got: %s", strings.Join(p, "; "))
+		}
+	})
+
+	t.Run("an unlisted field may not", func(t *testing.T) {
+		// Container is data Reelix genuinely has; a null here is a bug.
+		p := problemsFor(t, `{"Container":"mkv"}`, `{"Container":null}`)
+		if len(p) != 1 || !strings.Contains(p[0], "$.Container") {
+			t.Errorf("expected a null Container to fail, got: %v", p)
+		}
+	})
+
+	t.Run("an allowance does not excuse a missing key", func(t *testing.T) {
+		// The distinction matters: the client's generated type has the field
+		// either way, but a key Reelix forgot to emit is exactly what this
+		// helper exists to catch. Null is a stated answer; absence is not.
+		p := problemsFor(t, `{"Overview":"a film"}`, `{}`)
+		if len(p) != 1 || !strings.Contains(p[0], "$.Overview: missing") {
+			t.Errorf("expected a missing Overview to fail, got: %v", p)
+		}
+	})
+
+	t.Run("an allowance scoped to a type does not cover the others", func(t *testing.T) {
+		const recorded = `{"MediaStreams":[
+			{"Type":"Video","Width":1920},
+			{"Type":"Subtitle","Width":1920}
+		]}`
+		// Subtitle geometry is allowed to be null; a video stream's is not.
+		got := `{"MediaStreams":[
+			{"Type":"Video","Width":null},
+			{"Type":"Subtitle","Width":null}
+		]}`
+		p := problemsFor(t, recorded, got)
+		if len(p) != 1 || !strings.Contains(p[0], "[0:Video].Width") {
+			t.Errorf("expected only the video stream to fail, got: %v", p)
+		}
+	})
+}
+
+// TestEveryAllowanceStatesAReason guards the list most likely to erode.
+//
+// because() panics on an empty reason, so an entry cannot be added without
+// one; this checks the reasons are sentences rather than placeholders, and
+// that no entry has been added by editing the struct directly.
+func TestEveryAllowanceStatesAReason(t *testing.T) {
+	for name, list := range map[string]map[string]allowance{
+		"absentInReelix": absentInReelix,
+		"dataObjects":    dataObjects,
+	} {
+		for path, a := range list {
+			if len(strings.TrimSpace(a.reason)) < 20 {
+				t.Errorf("%s[%q] does not state why: %q", name, path, a.reason)
+			}
+		}
+	}
+}
+
+// TestBecauseRequiresAReason checks the requirement is enforced rather than
+// merely documented.
+func TestBecauseRequiresAReason(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("an allowance without a reason was accepted")
+		}
+	}()
+
+	because("   ")
+}
+
+// TestNormalizePath pins the path forms the allowance keys are written
+// against.
+func TestNormalizePath(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"$.Items[0].Overview", "$.Items[].Overview"},
+		{"$.MediaStreams[2:Subtitle].Width", "$.MediaStreams[Subtitle].Width"},
+		{"$.MediaSources[0:Default].MediaStreams[11:Audio].Language",
+			"$.MediaSources[Default].MediaStreams[Audio].Language"},
+		{"$.Container", "$.Container"},
+	} {
+		if got := normalizePath(tc.in); got != tc.want {
+			t.Errorf("normalizePath(%q) = %q, want %q", tc.in, got, tc.want)
+		}
 	}
 }
