@@ -194,6 +194,38 @@ func (h *harness) login() string {
 	return out.AccessToken
 }
 
+// loginAs creates a second account and returns its access token, for the
+// tests that check one user's history stays its own.
+func (h *harness) loginAs(t *testing.T, username string) string {
+	t.Helper()
+
+	hash, err := auth.HashPassword(testPassword)
+	if err != nil {
+		t.Fatalf("hashing password: %v", err)
+	}
+
+	user := domain.User{Username: username, PasswordHash: hash}
+	if err := repository.NewUserRepository(h.pool).Create(context.Background(), &user); err != nil {
+		t.Fatalf("creating user %q: %v", username, err)
+	}
+
+	resp := h.do(http.MethodPost, "/Users/AuthenticateByName", "", map[string]string{
+		"Username": username,
+		"Pw":       testPassword,
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("authenticating as %q: %d: %s", username, resp.StatusCode, h.bodyOf(resp))
+	}
+
+	var out struct {
+		AccessToken string `json:"AccessToken"`
+	}
+	if err := json.Unmarshal(h.bodyOf(resp), &out); err != nil {
+		t.Fatalf("decoding auth response: %v", err)
+	}
+	return out.AccessToken
+}
+
 // TestPublicSystemInfoMatchesFixture validates the first request any client
 // makes — the one "add server by address" succeeds or fails on.
 func TestPublicSystemInfoMatchesFixture(t *testing.T) {

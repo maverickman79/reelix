@@ -60,9 +60,8 @@ func (a *API) handleItems(w http.ResponseWriter, r *http.Request) {
 	query, empty := browseQuery(r)
 	if empty {
 		// The client asked for something Reelix demonstrably has none of —
-		// episodes, or items it has already been told are played. An empty
-		// result is the truthful answer, and unlike a 404 the client accepts
-		// it as final.
+		// episodes, for instance. An empty result is the truthful answer, and
+		// unlike a 404 the client accepts it as final.
 		a.writeJSON(w, r, http.StatusOK, emptyItemsResult(query.Offset))
 		return
 	}
@@ -109,7 +108,7 @@ func (a *API) handleItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	detail, err := a.media.Item(r.Context(), id)
+	detail, err := a.media.Item(r.Context(), id, userFrom(r.Context()).ID)
 	switch {
 	case err == nil:
 		a.writeJSON(w, r, http.StatusOK, newItemDetailDTO(detail, settings))
@@ -166,6 +165,10 @@ func (a *API) handleLatestItems(w http.ResponseWriter, r *http.Request) {
 	query.Sort = repository.ItemSortCreatedAt
 	query.Descending = true
 	query.Offset = 0
+
+	// Reelix reports HidePlayedInLatest in the user configuration, so this
+	// row has to actually hide them.
+	query.ExcludePlayed = true
 
 	result, err := a.media.Browse(r.Context(), query)
 	if err != nil {
@@ -257,6 +260,7 @@ func browseQuery(r *http.Request) (service.BrowseQuery, bool) {
 	q := r.URL.Query()
 
 	query := service.BrowseQuery{
+		UserID: userFrom(r.Context()).ID,
 		Offset: intParam(q.Get("startIndex"), 0),
 		Limit:  intParam(q.Get("limit"), 0),
 	}
@@ -267,11 +271,12 @@ func browseQuery(r *http.Request) (service.BrowseQuery, bool) {
 		return query, true
 	}
 
-	// Playback state arrives with Step 7. Until then nothing has been played,
-	// so a request restricted to played items matches nothing — and one
-	// restricted to unplayed items matches everything.
-	if strings.EqualFold(q.Get("isPlayed"), "true") {
-		return query, true
+	// A client filtering on played state is asking about this user's history.
+	switch {
+	case strings.EqualFold(q.Get("isPlayed"), "true"):
+		query.PlayedOnly = true
+	case strings.EqualFold(q.Get("isPlayed"), "false"):
+		query.ExcludePlayed = true
 	}
 
 	if raw := q.Get("parentId"); raw != "" {
@@ -316,9 +321,8 @@ func browseQuery(r *http.Request) (service.BrowseQuery, bool) {
 // sortOrder maps a client's sortBy onto an ordering Reelix can serve.
 //
 // Wholphin asks for DateCreated, CommunityRating, SortName, DatePlayed and
-// Random. The first, third and fifth map onto real columns. CommunityRating
-// and DatePlayed have no data behind them in 0.0.1 — there is no metadata and
-// no playback history — so they fall back to title order: a row in an
+// Random, and all but CommunityRating map onto real columns. There is still no
+// metadata behind a rating, so that one falls back to title order: a row in an
 // unexpected order is a cosmetic surprise, where an error is an empty screen.
 func sortOrder(q map[string][]string) (repository.ItemSort, bool) {
 	descending := false
@@ -341,6 +345,8 @@ func sortOrder(q map[string][]string) (repository.ItemSort, bool) {
 			return repository.ItemSortCreatedAt, descending
 		case strings.EqualFold(name, "Random"):
 			return repository.ItemSortRandom, descending
+		case strings.EqualFold(name, "DatePlayed"):
+			return repository.ItemSortLastPlayed, descending
 		case strings.EqualFold(name, "PremiereDate"), strings.EqualFold(name, "ProductionYear"):
 			return repository.ItemSortYear, descending
 		}

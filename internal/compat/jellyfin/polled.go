@@ -1,6 +1,10 @@
 package jellyfin
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/maverickman79/reelix/internal/repository"
+)
 
 // The routes in this file are polled by Wholphin on its home screen. None of
 // them carries data in 0.0.1 — the libraries themselves arrive with
@@ -73,12 +77,45 @@ func (a *API) handleUserImage(w http.ResponseWriter, r *http.Request) {
 
 // handleResumeItems serves GET /UserItems/Resume.
 //
-// Nothing is resumable until playback state exists, which arrives with
-// Step 7. The userId query parameter is ignored: the user comes from the
-// token, and the recorded traffic shows Wholphin omitting userId entirely on
-// some calls.
+// Continue Watching: the items this user is part-way through, most recently
+// played first. The userId query parameter is ignored — the user comes from
+// the token, and the recorded traffic shows Wholphin omitting userId entirely
+// on some calls.
 func (a *API) handleResumeItems(w http.ResponseWriter, r *http.Request) {
-	a.writeJSON(w, r, http.StatusOK, emptyQueryResult())
+	settings, err := a.sessions.ServerSettings(r.Context())
+	if err != nil {
+		a.fail(r, "resume_items", err)
+		writeStatus(w, http.StatusInternalServerError)
+		return
+	}
+
+	query, empty := browseQuery(r)
+	if empty {
+		a.writeJSON(w, r, http.StatusOK, emptyItemsResult(query.Offset))
+		return
+	}
+
+	query.InProgressOnly = true
+	query.Sort = repository.ItemSortLastPlayed
+	query.Descending = true
+
+	result, err := a.media.Browse(r.Context(), query)
+	if err != nil {
+		a.fail(r, "resume_items", err)
+		writeStatus(w, http.StatusInternalServerError)
+		return
+	}
+
+	items := make([]itemDTO, 0, len(result.Items))
+	for _, row := range result.Items {
+		items = append(items, newItemDTO(row, settings))
+	}
+
+	a.writeJSON(w, r, http.StatusOK, queryResult[itemDTO]{
+		Items:            items,
+		TotalRecordCount: result.Total,
+		StartIndex:       query.Offset,
+	})
 }
 
 // handleNextUp serves GET /Shows/NextUp.

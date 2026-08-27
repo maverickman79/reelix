@@ -96,7 +96,7 @@ func (a *API) handlePlaybackInfo(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	detail, err := a.media.Item(r.Context(), id)
+	detail, err := a.media.Item(r.Context(), id, userFrom(r.Context()).ID)
 	if err != nil {
 		if errors.Is(err, service.ErrItemNotFound) {
 			writeStatus(w, http.StatusNotFound)
@@ -297,8 +297,15 @@ func contentTypeFor(filename string) string {
 }
 
 // handlePlaybackStarted serves POST /Sessions/Playing.
+//
+// Logged but not stored. The recorded start body carries no PositionTicks at
+// all, so storing it would mean writing a position of zero — which, judged
+// against the thresholds, clears any resume position the user already had.
+// Pressing play on a half-watched film would wipe the very thing it is about
+// to resume from. The first progress report arrives five seconds later and
+// carries a real position.
 func (a *API) handlePlaybackStarted(w http.ResponseWriter, r *http.Request) {
-	a.recordPlayback(w, r, "playback started", slog.LevelInfo)
+	a.recordPlayback(w, r, "playback started", slog.LevelInfo, playbackStart)
 }
 
 // handlePlaybackProgress serves POST /Sessions/Playing/Progress.
@@ -307,21 +314,42 @@ func (a *API) handlePlaybackStarted(w http.ResponseWriter, r *http.Request) {
 // the recorded session for one film — and at info that would bury everything
 // operationally useful.
 func (a *API) handlePlaybackProgress(w http.ResponseWriter, r *http.Request) {
-	a.recordPlayback(w, r, "playback progress", slog.LevelDebug)
+	a.recordPlayback(w, r, "playback progress", slog.LevelDebug, playbackTick)
 }
 
 // handlePlaybackStopped serves POST /Sessions/Playing/Stopped.
+//
+// The only report that can complete a viewing, which is what makes the play
+// count increment once per playback rather than once every few seconds
+// through the closing credits.
 func (a *API) handlePlaybackStopped(w http.ResponseWriter, r *http.Request) {
-	a.recordPlayback(w, r, "playback stopped", slog.LevelInfo)
+	a.recordPlayback(w, r, "playback stopped", slog.LevelInfo, playbackEnd)
 }
 
-// recordPlayback logs what a client reports and answers 204.
+// playbackEvent is which of the three reports arrived.
+type playbackEvent int
+
+const (
+	// playbackStart is logged only; see handlePlaybackStarted for why.
+	playbackStart playbackEvent = iota
+	// playbackTick is a position during a playback.
+	playbackTick
+	// playbackEnd is the end of one, and the only report that can complete a
+	// viewing.
+	playbackEnd
+)
+
+// recordPlayback stores what a client reports, logs it, and answers 204.
 //
-// Nothing is persisted. 0.0.1 records a playback session in the log, which is
-// the milestone's criterion; resume state needs a table and a migration and is
-// deliberately not here. Until it exists /UserItems/Resume stays empty and
-// PlaybackPositionTicks stays zero.
-func (a *API) recordPlayback(w http.ResponseWriter, r *http.Request, message string, level slog.Level) {
+// Every progress report is a write. One report per five seconds per stream is
+// a single-row upsert on a primary key — noise for Postgres beside the request
+// that carried it — and the alternative, coalescing in memory, would put the
+// state being added in the one place a crash destroys it, and would be wrong
+// the moment there is a second process. The upsert suppresses no-op writes, so
+// a paused client reporting an unchanged position writes nothing at all.
+func (a *API) recordPlayback(w http.ResponseWriter, r *http.Request, message string,
+	level slog.Level, event playbackEvent) {
+
 	var report playbackReport
 	if r.ContentLength != 0 {
 		if err := decodeJSON(r, &report); err != nil {
@@ -348,9 +376,46 @@ func (a *API) recordPlayback(w http.ResponseWriter, r *http.Request, message str
 		attrs = append(attrs, slog.Bool("failed", true))
 	}
 
+	if event != playbackStart {
+		progress, err := a.storeProgress(r, report, event == playbackEnd)
+		switch {
+		case errors.Is(err, service.ErrItemNotFound):
+			// The client is reporting progress through something that is no
+			// longer in the library. Nothing to record and nothing to fix.
+			attrs = append(attrs, slog.Bool("unknown_item", true))
+
+		case err != nil:
+			a.fail(r, "playback_report", err)
+			writeStatus(w, http.StatusInternalServerError)
+			return
+
+		default:
+			attrs = append(attrs,
+				slog.String("resume_position", formatTicks(secondsToTicks(progress.ResumePosition))),
+				slog.Bool("completed", progress.Completed))
+		}
+	}
+
 	logging.FromContext(r.Context()).LogAttrs(r.Context(), level, message, attrs...)
 
 	writeStatus(w, http.StatusNoContent)
+}
+
+// storeProgress translates a client's report into a native one and records it.
+func (a *API) storeProgress(r *http.Request, report playbackReport, stopped bool) (service.Progress, error) {
+	id, err := parseCompatID(report.ItemID)
+	if err != nil {
+		// An id Reelix cannot parse names nothing it holds.
+		return service.Progress{}, fmt.Errorf("%w: %q", service.ErrItemNotFound, report.ItemID)
+	}
+
+	return a.playback.Record(r.Context(), service.PlaybackReport{
+		UserID:          userFrom(r.Context()).ID,
+		ItemID:          id,
+		PositionSeconds: float64(report.PositionTicks) / ticksPerSecond,
+		Stopped:         stopped,
+		Failed:          report.Failed,
+	})
 }
 
 // itemID renders the reported item id in the dashless form.

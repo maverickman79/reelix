@@ -130,10 +130,11 @@ type itemDetailDTO struct {
 
 // userDataDTO is a client's per-user state for an item.
 //
-// Everything is zero in 0.0.1: playback state arrives with Step 7. Nothing
-// has ever been played, so LastPlayedDate is null — the recorded server
-// omitted the field entirely for items in that state, and the client rendered
-// both.
+// PlaybackPositionTicks is the resume position, already judged against the
+// thresholds: an item watched for two minutes reports zero, which is what the
+// reference server did in the same situation. LastPlayedDate is null until
+// something has been played — the recorded server omitted the field entirely
+// in that state, and the client rendered both.
 type userDataDTO struct {
 	PlaybackPositionTicks int64   `json:"PlaybackPositionTicks"`
 	PlayCount             int     `json:"PlayCount"`
@@ -340,7 +341,7 @@ func newViewDTO(v service.View, settings domain.ServerSettings) viewDTO {
 		Studios:              emptyList(),
 		GenreItems:           emptyList(),
 		LocalTrailerCount:    0,
-		UserData:             newUserDataDTO(v.Library.ID),
+		UserData:             newUserDataDTO(v.Library.ID, domain.PlaybackState{}),
 		ChildCount:           v.ItemCount,
 		SpecialFeatureCount:  0,
 		DisplayPreferencesID: id,
@@ -377,7 +378,7 @@ func newItemDTO(row repository.ItemWithFile, settings domain.ServerSettings) ite
 		ProductionYear:    row.Item.Year,
 		IsFolder:          false,
 		Type:              "Movie",
-		UserData:          newUserDataDTO(row.Item.ID),
+		UserData:          newUserDataDTO(row.Item.ID, row.State),
 		VideoType:         "VideoFile",
 		ImageTags:         map[string]string{},
 		BackdropImageTags: emptyStrings(),
@@ -399,6 +400,7 @@ func newItemDetailDTO(detail service.ItemDetail, settings domain.ServerSettings)
 		Item:         detail.Item,
 		File:         detail.File,
 		HasSubtitles: detail.HasSubtitles,
+		State:        detail.State,
 	}
 
 	id := compatID(detail.Item.ID)
@@ -542,11 +544,28 @@ func newStreamDTOs(streams []domain.MediaStream) []mediaStreamDTO {
 //
 // Key is the dashed id, which is what the reference server used for items
 // carrying no external provider id.
-func newUserDataDTO(id uuid.UUID) userDataDTO {
-	return userDataDTO{
-		Key:    id.String(),
-		ItemID: compatID(id),
+func newUserDataDTO(id uuid.UUID, state domain.PlaybackState) userDataDTO {
+	dto := userDataDTO{
+		PlaybackPositionTicks: secondsToTicks(state.PositionSeconds),
+		PlayCount:             state.PlayCount,
+		Played:                state.Played,
+		Key:                   id.String(),
+		ItemID:                compatID(id),
 	}
+
+	if state.LastPlayedAt != nil {
+		played := formatTime(*state.LastPlayedAt)
+		dto.LastPlayedDate = &played
+	}
+	return dto
+}
+
+// secondsToTicks converts a stored position into the unit clients speak.
+func secondsToTicks(seconds float64) int64 {
+	if seconds <= 0 {
+		return 0
+	}
+	return int64(seconds * ticksPerSecond)
 }
 
 // videoStream returns the first video stream, or nil.
