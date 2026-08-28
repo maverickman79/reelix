@@ -15,6 +15,7 @@ func setEnv(t *testing.T, env map[string]string) {
 		"REELIX_CONFIG_DIR", "REELIX_CACHE_DIR", "REELIX_SHUTDOWN_TIMEOUT",
 		"REELIX_DB_HOST", "REELIX_DB_PORT", "REELIX_DB_NAME",
 		"REELIX_DB_USER", "REELIX_DB_PASSWORD", "REELIX_DB_SSLMODE",
+		"REELIX_TMDB_API_KEY", "REELIX_TMDB_BASE_URL", "REELIX_METADATA_TIMEOUT",
 	} {
 		t.Setenv(k, "")
 	}
@@ -23,9 +24,48 @@ func setEnv(t *testing.T, env map[string]string) {
 	}
 }
 
-// A password is the only mandatory setting; everything else has a default.
+// The database password and the TMDB key are the mandatory settings;
+// everything else has a default.
 func minimalEnv() map[string]string {
-	return map[string]string{"REELIX_DB_PASSWORD": "s3cret"}
+	return map[string]string{
+		"REELIX_DB_PASSWORD":  "s3cret",
+		"REELIX_TMDB_API_KEY": "tmdb-key",
+	}
+}
+
+// TestLoadRequiresTMDBKey is the startup-not-first-use guarantee.
+//
+// A missing key is a configuration mistake, and the ffprobe precedent puts a
+// configuration mistake at startup naming the variable rather than minutes
+// later on the first item of an identify pass.
+func TestLoadRequiresTMDBKey(t *testing.T) {
+	env := minimalEnv()
+	delete(env, "REELIX_TMDB_API_KEY")
+	setEnv(t, env)
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() succeeded without REELIX_TMDB_API_KEY")
+	}
+	if !strings.Contains(err.Error(), "REELIX_TMDB_API_KEY") {
+		t.Errorf("the error does not name the variable: %v", err)
+	}
+}
+
+// TestLoadDoesNotReachTMDB pins the asymmetry with ffprobe deliberately.
+//
+// ffprobe is a local binary and main runs it at startup. TMDB is a remote
+// service, and refusing to start a media server because someone else's API is
+// down would turn their outage into ours. Load must therefore accept a key it
+// has not verified, against an unroutable base URL.
+func TestLoadDoesNotReachTMDB(t *testing.T) {
+	env := minimalEnv()
+	env["REELIX_TMDB_BASE_URL"] = "http://127.0.0.1:1/nothing-listens-here"
+	setEnv(t, env)
+
+	if _, err := Load(); err != nil {
+		t.Fatalf("Load() reached out and failed: %v", err)
+	}
 }
 
 func TestLoadDefaults(t *testing.T) {
@@ -74,6 +114,8 @@ func TestLoadOverrides(t *testing.T) {
 		"REELIX_DB_USER":          "reelix_app",
 		"REELIX_DB_PASSWORD":      "hunter2",
 		"REELIX_DB_SSLMODE":       "require",
+		"REELIX_TMDB_API_KEY":     "tmdb-key",
+		"REELIX_METADATA_TIMEOUT": "30s",
 	})
 
 	cfg, err := Load()
@@ -81,6 +123,12 @@ func TestLoadOverrides(t *testing.T) {
 		t.Fatalf("Load() returned error: %v", err)
 	}
 
+	if cfg.Metadata.TMDBAPIKey != "tmdb-key" {
+		t.Errorf("Metadata.TMDBAPIKey = %q, want tmdb-key", cfg.Metadata.TMDBAPIKey)
+	}
+	if cfg.Metadata.RequestTimeout != 30*time.Second {
+		t.Errorf("Metadata.RequestTimeout = %v, want 30s", cfg.Metadata.RequestTimeout)
+	}
 	if cfg.HTTP.Addr != "127.0.0.1:9000" {
 		t.Errorf("HTTP.Addr = %q, want 127.0.0.1:9000", cfg.HTTP.Addr)
 	}

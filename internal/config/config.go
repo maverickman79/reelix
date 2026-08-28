@@ -37,6 +37,14 @@ const (
 	DefaultFFprobePath  = "/usr/lib/jellyfin-ffmpeg/ffprobe"
 	DefaultFFmpegPath   = "/usr/lib/jellyfin-ffmpeg/ffmpeg"
 	DefaultProbeTimeout = 2 * time.Minute
+
+	// TMDB is the movie identity provider. The base URL is configurable so a
+	// test can point at an httptest server without the suite reaching the
+	// real internet.
+	DefaultTMDBBaseURL = "https://api.themoviedb.org/3"
+	// One provider call. Identity makes one search per unidentified item, so
+	// this bounds a single request, not the pass.
+	DefaultMetadataTimeout = 15 * time.Second
 )
 
 // Config is the fully resolved configuration for one server process.
@@ -46,6 +54,32 @@ type Config struct {
 	Paths    Paths
 	Database Database
 	Media    Media
+	Metadata Metadata
+}
+
+// Metadata configures the external metadata provider.
+//
+// TMDBAPIKey is REQUIRED, and that is deliberate. A key that is missing is a
+// configuration mistake, and the ffprobe precedent says a configuration
+// mistake belongs at startup naming the variable, not minutes later when
+// somebody triggers an identify pass and it fails on its first item.
+//
+// Note the consequence: an instance that only ever browses and plays local
+// files still needs a key to boot. That is the cost of finding out early.
+//
+// Reachability is NOT checked at startup, and the asymmetry with ffprobe is
+// intentional. ffprobe is a local binary, so its absence is permanent and
+// knowable. TMDB is a remote service that can be down for reasons that have
+// nothing to do with this deployment, and refusing to start a media server
+// because a metadata API is unreachable would turn someone else's outage into
+// ours — the same reasoning that keeps identification out of the scan.
+type Metadata struct {
+	TMDBAPIKey string
+	// TMDBBaseURL exists so tests can redirect the provider. Deployments
+	// should leave it alone.
+	TMDBBaseURL string
+	// RequestTimeout bounds one provider HTTP request.
+	RequestTimeout time.Duration
 }
 
 // Media configures the external media tools.
@@ -142,6 +176,23 @@ func Load() (Config, error) {
 			FFmpegPath:   lookupString("REELIX_FFMPEG_PATH", DefaultFFmpegPath),
 			ProbeTimeout: DefaultProbeTimeout,
 		},
+		Metadata: Metadata{
+			TMDBAPIKey:     lookupString("REELIX_TMDB_API_KEY", ""),
+			TMDBBaseURL:    lookupString("REELIX_TMDB_BASE_URL", DefaultTMDBBaseURL),
+			RequestTimeout: DefaultMetadataTimeout,
+		},
+	}
+
+	if raw, ok := lookup("REELIX_METADATA_TIMEOUT"); ok {
+		d, err := time.ParseDuration(raw)
+		switch {
+		case err != nil:
+			fail("REELIX_METADATA_TIMEOUT: %q is not a duration (want e.g. 15s, 1m)", raw)
+		case d <= 0:
+			fail("REELIX_METADATA_TIMEOUT: must be positive, got %q", raw)
+		default:
+			cfg.Metadata.RequestTimeout = d
+		}
 	}
 
 	if raw, ok := lookup("REELIX_PROBE_TIMEOUT"); ok {
@@ -215,6 +266,12 @@ func Load() (Config, error) {
 	}
 	if cfg.Media.FFmpegPath == "" {
 		fail("REELIX_FFMPEG_PATH: must not be empty")
+	}
+	if cfg.Metadata.TMDBAPIKey == "" {
+		fail("REELIX_TMDB_API_KEY: must be set (get one at https://www.themoviedb.org/settings/api)")
+	}
+	if cfg.Metadata.TMDBBaseURL == "" {
+		fail("REELIX_TMDB_BASE_URL: must not be empty")
 	}
 
 	if len(errs) > 0 {
