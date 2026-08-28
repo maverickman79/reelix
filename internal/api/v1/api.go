@@ -21,6 +21,7 @@ type API struct {
 	libraries *service.LibraryService
 	scans     *service.ScanService
 	identity  *service.IdentityService
+	metadata  *service.MetadataService
 }
 
 // New builds the API.
@@ -29,8 +30,12 @@ func New(
 	libraries *service.LibraryService,
 	scans *service.ScanService,
 	identity *service.IdentityService,
+	metadataSvc *service.MetadataService,
 ) *API {
-	return &API{auth: authSvc, libraries: libraries, scans: scans, identity: identity}
+	return &API{
+		auth: authSvc, libraries: libraries, scans: scans,
+		identity: identity, metadata: metadataSvc,
+	}
 }
 
 // Routes returns the handler for everything under Prefix.
@@ -65,6 +70,18 @@ func (a *API) Routes() http.Handler {
 	mux.HandleFunc("GET /items/{id}/identity", a.requireAuth(a.handleGetIdentity))
 	mux.HandleFunc("PUT /items/{id}/identity", a.requireAdmin(a.handleSetIdentity))
 	mux.HandleFunc("DELETE /items/{id}/identity", a.requireAdmin(a.handleResetIdentity))
+
+	// Metadata fields. Reading is not administrative; editing, locking and
+	// starting a library-wide refresh are.
+	//
+	// ?all=true on the refresh re-fetches everything identified, which is one
+	// provider request per film. The default is items never fetched, so the
+	// expensive form is asked for rather than discovered.
+	mux.HandleFunc("POST /libraries/{id}/refresh-metadata", a.requireAdmin(a.handleRefreshMetadata))
+	mux.HandleFunc("GET /items/{id}/metadata", a.requireAuth(a.handleGetMetadata))
+	mux.HandleFunc("PATCH /items/{id}/metadata", a.requireAdmin(a.handleSetMetadata))
+	mux.HandleFunc("PUT /items/{id}/metadata/{field}/lock", a.requireAdmin(a.handleSetFieldLock))
+	mux.HandleFunc("DELETE /items/{id}/metadata/{field}/lock", a.requireAdmin(a.handleSetFieldLock))
 
 	return mux
 }

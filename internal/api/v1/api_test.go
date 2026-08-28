@@ -91,6 +91,7 @@ func newHarness(t *testing.T) *harness {
 		// and the identity state machine, not the provider; a fake that
 		// refuses is enough to prove nothing here reaches the real TMDB.
 		service.NewIdentityService(pool, refusingProvider{}, discard),
+		service.NewMetadataService(pool, refusingProvider{}, discard),
 	)
 
 	// StripPrefix mirrors how internal/server mounts the API, so the tests
@@ -266,4 +267,8 @@ func (refusingProvider) ExternalIDs(context.Context, string) (map[string]string,
 
 func (refusingProvider) AlternativeTitles(context.Context, string) ([]string, error) {
 	return nil, errors.New("the fake provider never answers")
+}
+
+func (refusingProvider) FetchMetadata(context.Context, string) (metadata.MovieMetadata, error) {
+	return metadata.MovieMetadata{}, errors.New("the fake provider never answers")
 }

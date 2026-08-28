@@ -70,6 +70,15 @@ type BrowseQuery struct {
 type BrowseResult struct {
 	Items []repository.ItemWithFile
 	Total int
+
+	// Metadata are the managed fields for the items on this page, keyed by
+	// item id. Loaded in one query for the whole page.
+	//
+	// Unlike the identity ids, these ARE rendered in a listing: itemDTO
+	// carries Overview, CommunityRating, OfficialRating and PremiereDate, so a
+	// page that did not load them would render every field null in the browse
+	// grid while the detail view showed them.
+	Metadata map[uuid.UUID]domain.ItemMetadata
 }
 
 // ItemDetail is a single item with everything needed to display and play it.
@@ -91,6 +100,10 @@ type ItemDetail struct {
 	// ExternalIDs are this item's identity ids, keyed by lowercase provider
 	// name. Empty when it has not been identified.
 	ExternalIDs map[string]string
+
+	// Metadata are the managed fields. Zero when nothing has been fetched,
+	// which is the ordinary state of a library that has not been refreshed.
+	Metadata domain.ItemMetadata
 }
 
 // maxBrowseLimit bounds a page.
@@ -165,7 +178,16 @@ func (s *MediaService) Browse(ctx context.Context, q BrowseQuery) (BrowseResult,
 	if err != nil {
 		return BrowseResult{}, err
 	}
-	return BrowseResult{Items: items, Total: total}, nil
+	itemIDs := make([]uuid.UUID, len(items))
+	for i, it := range items {
+		itemIDs[i] = it.Item.ID
+	}
+	md, err := repository.NewMetadataRepository(s.pool).MetadataFor(ctx, itemIDs)
+	if err != nil {
+		return BrowseResult{}, err
+	}
+
+	return BrowseResult{Items: items, Total: total, Metadata: md}, nil
 }
 
 // Item returns one media item with its file, streams, and the requesting
@@ -202,7 +224,12 @@ func (s *MediaService) Item(ctx context.Context, id uuid.UUID, userID uuid.UUID)
 		return ItemDetail{}, err
 	}
 
-	detail := ItemDetail{Item: item, State: state, ExternalIDs: ids[id]}
+	md, err := repository.NewMetadataRepository(s.pool).Get(ctx, id)
+	if err != nil {
+		return ItemDetail{}, err
+	}
+
+	detail := ItemDetail{Item: item, State: state, ExternalIDs: ids[id], Metadata: md}
 	if len(files) == 0 {
 		return detail, nil
 	}

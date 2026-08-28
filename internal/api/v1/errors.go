@@ -134,3 +134,16 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 	}
 	return nil
 }
+
+// remarshal re-decodes an already-decoded body into a typed struct.
+//
+// The metadata patch has to know which keys were PRESENT, because a null and
+// an omission mean different things there, and only a map preserves that.
+// Decoding twice is the cost of keeping that distinction.
+func remarshal(from any, into any) error {
+	raw, err := json.Marshal(from)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(raw, into)
+}

@@ -25,9 +25,13 @@ type fakeProvider struct {
 	// altTitles are the alternative titles returned per provider id.
 	altTitles map[string][]string
 
+	// meta is what FetchMetadata returns.
+	meta metadata.MovieMetadata
+
 	searchErr error
 	idsErr    error
 	altErr    error
+	metaErr   error
 
 	searches int
 	idCalls  int
@@ -37,6 +41,9 @@ type fakeProvider struct {
 	// altAsked records which provider ids were asked about, which is how the
 	// year window is checked.
 	altAsked []string
+	// metaCalls counts metadata fetches, which is how the default-versus-all
+	// refresh scope is checked.
+	metaCalls int
 }
 
 func (f *fakeProvider) Name() string { return "tmdb" }
@@ -55,6 +62,14 @@ func (f *fakeProvider) ExternalIDs(context.Context, string) (map[string]string, 
 		return nil, f.idsErr
 	}
 	return f.extra, nil
+}
+
+func (f *fakeProvider) FetchMetadata(_ context.Context, id string) (metadata.MovieMetadata, error) {
+	f.metaCalls++
+	if f.metaErr != nil {
+		return metadata.MovieMetadata{}, f.metaErr
+	}
+	return f.meta, nil
 }
 
 func (f *fakeProvider) AlternativeTitles(_ context.Context, id string) ([]string, error) {
