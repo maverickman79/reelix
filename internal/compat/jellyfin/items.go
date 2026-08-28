@@ -79,7 +79,7 @@ func (a *API) handleItems(w http.ResponseWriter, r *http.Request) {
 
 	items := make([]itemDTO, 0, len(result.Items))
 	for _, row := range result.Items {
-		items = append(items, newItemDTO(row, settings))
+		items = append(items, newItemDTO(row, settings, result.Metadata[row.Item.ID]))
 	}
 
 	a.writeJSON(w, r, http.StatusOK, queryResult[itemDTO]{
@@ -179,7 +179,7 @@ func (a *API) handleLatestItems(w http.ResponseWriter, r *http.Request) {
 
 	items := make([]itemDTO, 0, len(result.Items))
 	for _, row := range result.Items {
-		items = append(items, newItemDTO(row, settings))
+		items = append(items, newItemDTO(row, settings, result.Metadata[row.Item.ID]))
 	}
 
 	a.writeJSON(w, r, http.StatusOK, items)

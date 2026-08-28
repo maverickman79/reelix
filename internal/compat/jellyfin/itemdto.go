@@ -367,7 +367,7 @@ func newViewDTO(v service.View, settings domain.ServerSettings) viewDTO {
 }
 
 // newItemDTO translates a media item into its list representation.
-func newItemDTO(row repository.ItemWithFile, settings domain.ServerSettings) itemDTO {
+func newItemDTO(row repository.ItemWithFile, settings domain.ServerSettings, md domain.ItemMetadata) itemDTO {
 	id := compatID(row.Item.ID)
 
 	dto := itemDTO{
@@ -377,14 +377,22 @@ func newItemDTO(row repository.ItemWithFile, settings domain.ServerSettings) ite
 		SortName:     strings.ToLower(row.Item.Title),
 		CanDelete:    false,
 		HasSubtitles: row.HasSubtitles,
-		// Unknown without metadata; see the file comment.
-		PremiereDate:      nil,
-		ChannelID:         nil,
-		Overview:          nil,
-		CommunityRating:   nil,
-		CriticRating:      nil,
-		OfficialRating:    nil,
-		ProductionYear:    row.Item.Year,
+		PremiereDate: formatDate(md.PremiereDate),
+		ChannelID:    nil,
+		Overview:     md.Overview,
+		// The provider's audience score. Null when nothing has rated the film:
+		// a 0 renders as zero stars, which is a claim nobody made.
+		CommunityRating: md.CommunityRating,
+		// CriticRating stays null. TMDB publishes no critic score, so the
+		// field has no source rather than an unfetched one.
+		CriticRating:   nil,
+		OfficialRating: md.OfficialRating,
+		// The provider's release year where there is one, and the year parsed
+		// from the filename otherwise. A boundary decision, not a schema one:
+		// media_items.year stays as parsed because it is the matcher's input,
+		// and overwriting it would mean re-identification changing its own
+		// input on every run.
+		ProductionYear:    productionYear(row.Item.Year, md.PremiereDate),
 		IsFolder:          false,
 		Type:              "Movie",
 		UserData:          newUserDataDTO(row.Item.ID, row.State),
@@ -417,7 +425,7 @@ func newItemDetailDTO(detail service.ItemDetail, settings domain.ServerSettings)
 	streams := newStreamDTOs(detail.Streams)
 
 	dto := itemDetailDTO{
-		itemDTO:                  newItemDTO(row, settings),
+		itemDTO:                  newItemDTO(row, settings, detail.Metadata),
 		CanDownload:              false,
 		Chapters:                 emptyList(),
 		DateCreated:              formatTime(detail.Item.CreatedAt),
@@ -425,8 +433,8 @@ func newItemDetailDTO(detail service.ItemDetail, settings domain.ServerSettings)
 		EnableMediaSourceDisplay: true,
 		Etag:                     etagOf(id, detail.Item.UpdatedAt.String()),
 		ExternalUrls:             externalURLs(detail.ExternalIDs),
-		GenreItems:               emptyList(),
-		Genres:                   emptyStrings(),
+		GenreItems:               genreItems(detail.Metadata.Genres),
+		Genres:                   genreNames(detail.Metadata.Genres),
 		LocalTrailerCount:        0,
 		LockData:                 false,
 		LockedFields:             emptyStrings(),

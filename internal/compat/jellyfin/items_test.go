@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 	"uuid"
 
 	"github.com/maverickman79/reelix/internal/domain"
@@ -87,6 +88,19 @@ func seedMedia(t *testing.T, h *harness) seededMedia {
 		if err := media.UpsertFile(ctx, &file); err != nil {
 			t.Fatalf("seeding file for %q: %v", m.title, err)
 		}
+
+		// The managed metadata fields, seeded for the same reason the stream
+		// metadata below is: the fixture comparison renders whatever the
+		// repository holds, and an item nothing has fetched renders nulls.
+		//
+		// Seeding is NOT what retires the Overview, CommunityRating,
+		// OfficialRating and PremiereDate allowances. Those are retired
+		// because the fields are plumbed from the provider through the schema
+		// to the DTO, proved away from this seed by TestFetchMetadata in
+		// internal/metadata/tmdb, TestMetadataRoundTrip in
+		// internal/repository, and TestRefreshStoresProviderFields in
+		// internal/service.
+		seedItemMetadata(t, h, item.ID, m)
 
 		codec, audio, subtitle := m.codec, "eac3", "subrip"
 		width, height, channels := m.width, m.height, m.channels
@@ -1156,5 +1170,39 @@ func TestItemContainerKeepsTheRawProbeList(t *testing.T) {
 	matroska := "matroska,webm"
 	if got := containerName(&matroska); got != "mkv" {
 		t.Errorf("containerName(%q) = %q, want %q", matroska, got, "mkv")
+	}
+}
+
+// seedItemMetadata writes the managed fields for one seeded film.
+//
+// Values of the right shape rather than the film's real ones: the fixture
+// comparison is structural, so what it can check is that a non-null value of
+// the recorded TYPE arrives. The real values are exercised against the real
+// provider by the service tests.
+func seedItemMetadata(t *testing.T, h *harness, itemID uuid.UUID, m seededMovie) {
+	t.Helper()
+
+	ctx := context.Background()
+	repo := repository.NewMetadataRepository(h.pool)
+
+	rating := 7.5
+	premiere := time.Date(m.year, 6, 1, 0, 0, 0, 0, time.UTC)
+
+	for _, f := range []struct {
+		field string
+		value any
+	}{
+		{domain.FieldOverview, "A film about " + m.title + "."},
+		{domain.FieldCommunityRating, rating},
+		{domain.FieldOfficialRating, "R"},
+		{domain.FieldPremiereDate, premiere},
+	} {
+		if _, err := repo.WriteField(ctx, itemID, f.field, "tmdb", f.value); err != nil {
+			t.Fatalf("seeding %s for %q: %v", f.field, m.title, err)
+		}
+	}
+
+	if _, err := repo.WriteGenres(ctx, itemID, "tmdb", []string{"Drama", "Thriller"}); err != nil {
+		t.Fatalf("seeding genres for %q: %v", m.title, err)
 	}
 }

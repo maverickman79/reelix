@@ -199,17 +199,19 @@ func because(reason string) allowance {
 var absentInReelix = map[string]allowance{
 	// Metadata scraping is not implemented, so nothing describes a movie
 	// beyond what its filename and container say.
-	"$..Overview":       because("[us] no metadata provider; the overview is genuinely unknown"),
-	"$..CriticRating":   because("[us] no metadata provider"),
-	"$..OfficialRating": because("[us] no metadata provider"),
+	// Retired: Overview, OfficialRating, CommunityRating and PremiereDate are
+	// emitted from the metadata provider as of the fields slice.
+	//
+	// CriticRating is NOT an unfetched field. TMDB publishes no critic score,
+	// so this one has no source rather than a source nobody has called yet,
+	// and it stays allowed until a provider that has one is added.
+	"$..CriticRating":   because("[us] TMDB publishes no critic score, so the field has no source"),
 	"$..OriginalTitle":  because("[us] no metadata provider; only the filename-derived title is known"),
-	"$..ProductionYear": because("[us] parsed from the filename, so null when the filename carries no year"),
+	"$..ProductionYear": because("[us] the provider's release year where there is one, else parsed from the filename, so null when neither has one"),
 
 	// These two are null rather than zero deliberately. Both clients read
 	// them through a null check, so null omits the element — and a fabricated
 	// value would NOT be omitted, it would render as a real rating or date.
-	"$..CommunityRating": because("[us] no metadata provider [client] Wholphin Formatting.kt renders any non-null value, so a fabricated 0 would show as zero stars"),
-	"$..PremiereDate":    because("[us] no metadata provider [client] Wholphin ScreensaverService.kt renders any non-null value, so a fabricated date would show as a real one"),
 
 	// Artwork downloading is not implemented, so there is no image to measure.
 	"$..PrimaryImageAspectRatio": because("[us] no artwork, so no primary image to have a ratio [client] Wholphin BaseItem.kt guards with takeIf { it > 0 }"),
@@ -683,7 +685,12 @@ func TestDataObjectsConstrainTheTypeOnly(t *testing.T) {
 // TestAbsenceNeedsAnAllowance checks the third rule, and its limits.
 func TestAbsenceNeedsAnAllowance(t *testing.T) {
 	t.Run("an allowed field may be null", func(t *testing.T) {
-		if p := problemsFor(t, `{"Overview":"a film"}`, `{"Overview":null}`); len(p) > 0 {
+		// CriticRating, not Overview: Overview used to be the example here and
+		// stopped being one when the metadata provider started emitting it,
+		// which is the point of the allowance list working. CriticRating has
+		// no source at all — TMDB publishes no critic score — so it is the
+		// stable example.
+		if p := problemsFor(t, `{"CriticRating":7.5}`, `{"CriticRating":null}`); len(p) > 0 {
 			t.Errorf("expected the allowance to apply, got: %s", strings.Join(p, "; "))
 		}
 	})
@@ -700,9 +707,9 @@ func TestAbsenceNeedsAnAllowance(t *testing.T) {
 		// The distinction matters: the client's generated type has the field
 		// either way, but a key Reelix forgot to emit is exactly what this
 		// helper exists to catch. Null is a stated answer; absence is not.
-		p := problemsFor(t, `{"Overview":"a film"}`, `{}`)
-		if len(p) != 1 || !strings.Contains(p[0], "$.Overview: missing") {
-			t.Errorf("expected a missing Overview to fail, got: %v", p)
+		p := problemsFor(t, `{"CriticRating":7.5}`, `{}`)
+		if len(p) != 1 || !strings.Contains(p[0], "$.CriticRating: missing") {
+			t.Errorf("expected a missing CriticRating to fail, got: %v", p)
 		}
 	})
 
