@@ -129,6 +129,11 @@ type Identity struct {
 	// Confidence is how the match was reached: exact, year_near, title_only.
 	// Nil unless Status is matched.
 	Confidence *string
+	// MatchedVia is "primary" or "alternative": which of the provider's titles
+	// the match was made against. Provenance only — nothing branches on it.
+	// It is the successor to the hand-resolved list as evidence that the
+	// matcher's threshold is set correctly; see migration 0010.
+	MatchedVia *string
 	// Reason explains a decline in operator-facing words. Nil unless Status is
 	// unmatched. Nothing branches on its contents.
 	Reason *string

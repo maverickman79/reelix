@@ -40,7 +40,7 @@ func (r *IdentityRepository) Ensure(ctx context.Context, itemID uuid.UUID) error
 // Get returns one item's identity, external ids included.
 func (r *IdentityRepository) Get(ctx context.Context, itemID uuid.UUID) (domain.Identity, error) {
 	const q = `
-		SELECT media_item_id, status, provider, confidence, reason,
+		SELECT media_item_id, status, provider, confidence, matched_via, reason,
 		       attempted_at, created_at, updated_at
 		  FROM media_item_identity
 		 WHERE media_item_id = $1`
@@ -109,16 +109,16 @@ func (r *IdentityRepository) Pending(ctx context.Context, libraryID uuid.UUID, l
 // SQL rather than in a read-then-write the caller performs, so a pass running
 // concurrently with somebody correcting a film by hand cannot lose their
 // correction.
-func (r *IdentityRepository) RecordMatch(ctx context.Context, itemID uuid.UUID, provider, confidence string, ids map[string]string) error {
+func (r *IdentityRepository) RecordMatch(ctx context.Context, itemID uuid.UUID, provider, confidence, matchedVia string, ids map[string]string) error {
 	const q = `
 		UPDATE media_item_identity
 		   SET status = 'matched', provider = $2, confidence = $3,
-		       reason = NULL, attempted_at = $4, updated_at = $4
+		       matched_via = $4, reason = NULL, attempted_at = $5, updated_at = $5
 		 WHERE media_item_id = $1
 		   AND status <> 'manual'`
 
 	ts := now()
-	tag, err := r.q.Exec(ctx, q, itemID, provider, confidence, ts)
+	tag, err := r.q.Exec(ctx, q, itemID, provider, confidence, matchedVia, ts)
 	if err != nil {
 		return mapError("recording identity match", err)
 	}
@@ -147,7 +147,7 @@ func (r *IdentityRepository) RecordUnmatched(ctx context.Context, itemID uuid.UU
 	const q = `
 		UPDATE media_item_identity
 		   SET status = 'unmatched', provider = NULL, confidence = NULL,
-		       reason = $2, attempted_at = $3, updated_at = $3
+		       matched_via = NULL, reason = $2, attempted_at = $3, updated_at = $3
 		 WHERE media_item_id = $1
 		   AND status <> 'manual'`
 
@@ -160,7 +160,7 @@ func (r *IdentityRepository) SetManual(ctx context.Context, itemID uuid.UUID, id
 	const q = `
 		UPDATE media_item_identity
 		   SET status = 'manual', provider = NULL, confidence = NULL,
-		       reason = NULL, attempted_at = $2, updated_at = $2
+		       matched_via = NULL, reason = NULL, attempted_at = $2, updated_at = $2
 		 WHERE media_item_id = $1`
 
 	ts := now()
@@ -179,7 +179,7 @@ func (r *IdentityRepository) Reset(ctx context.Context, itemID uuid.UUID) error 
 	const q = `
 		UPDATE media_item_identity
 		   SET status = 'pending', provider = NULL, confidence = NULL,
-		       reason = NULL, attempted_at = NULL, updated_at = $2
+		       matched_via = NULL, reason = NULL, attempted_at = NULL, updated_at = $2
 		 WHERE media_item_id = $1`
 
 	ts := now()
@@ -288,7 +288,7 @@ func (r *IdentityRepository) ExternalIDsFor(ctx context.Context, itemIDs []uuid.
 func scanIdentity(row interface{ Scan(...any) error }, op string) (domain.Identity, error) {
 	var i domain.Identity
 	err := row.Scan(&i.MediaItemID, &i.Status, &i.Provider, &i.Confidence,
-		&i.Reason, &i.AttemptedAt, &i.CreatedAt, &i.UpdatedAt)
+		&i.MatchedVia, &i.Reason, &i.AttemptedAt, &i.CreatedAt, &i.UpdatedAt)
 	if err != nil {
 		return domain.Identity{}, mapError(op, err)
 	}
