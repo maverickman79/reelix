@@ -775,6 +775,102 @@ func TestItemSubRoutesMatchFixtures(t *testing.T) {
 	})
 }
 
+// TestItemDetailEmitsIdentity proves the DTO CALLS the provider-id helpers.
+//
+// providerids_test.go already tests those helpers directly, and that is not
+// the same thing. Every other seeded item here has no identity, so ProviderIds
+// is correctly {} whether the DTO consults the identity or ignores it — the
+// assertion cannot tell the two apart. Removing the wiring from the DTO left
+// the whole compat suite green, which is how this gap was found.
+//
+// The item is therefore given an identity first, so that {} becomes a WRONG
+// answer rather than merely an unexercised one.
+func TestItemDetailEmitsIdentity(t *testing.T) {
+	h := newHarness(t)
+	seeded := seedMedia(t, h)
+	token := h.login()
+
+	item := seeded.byTitle["Gangland"]
+	ctx := context.Background()
+
+	// The ids a real 10.11.8 reports for this film, and the ones Reelix's own
+	// pass produced against TMDB.
+	identities := repository.NewIdentityRepository(h.pool)
+	if err := identities.SetManual(ctx, item.ID, map[string]string{
+		"tmdb": "1147610",
+		"imdb": "tt28263483",
+	}); err != nil {
+		t.Fatalf("seeding identity: %v", err)
+	}
+
+	resp := h.do(http.MethodGet, "/Items/"+compatID(item.ID), token, nil)
+	var got struct {
+		ProviderIds  map[string]string
+		ExternalUrls []struct{ Name, Url string }
+	}
+	if err := json.Unmarshal(h.bodyOf(resp), &got); err != nil {
+		t.Fatalf("decoding: %v", err)
+	}
+
+	// The keys are the reference's, probed from a live 10.11.8: "Tmdb" and
+	// "Imdb", not "TMDB", "tmdb" or "IMDB".
+	if got.ProviderIds["Tmdb"] != "1147610" {
+		t.Errorf(`ProviderIds["Tmdb"] = %q, want "1147610" (got %v)`,
+			got.ProviderIds["Tmdb"], got.ProviderIds)
+	}
+	if got.ProviderIds["Imdb"] != "tt28263483" {
+		t.Errorf(`ProviderIds["Imdb"] = %q, want "tt28263483"`, got.ProviderIds["Imdb"])
+	}
+
+	// And the display names differ from the keys, which is the detail nothing
+	// in the capture pinned.
+	names := map[string]string{}
+	for _, u := range got.ExternalUrls {
+		names[u.Name] = u.Url
+	}
+	if names["TMDB"] != "https://www.themoviedb.org/movie/1147610" {
+		t.Errorf("TMDB url = %q", names["TMDB"])
+	}
+	if names["IMDb"] != "https://www.imdb.com/title/tt28263483" {
+		t.Errorf("IMDb url = %q", names["IMDb"])
+	}
+}
+
+// TestItemDetailWithoutIdentityEmitsTheRecordedEmptyShapes is the control.
+//
+// It is the assertion every other test in this file was already making by
+// accident. Kept deliberately, and paired with the test above so the pair can
+// discriminate: this one alone cannot.
+func TestItemDetailWithoutIdentityEmitsTheRecordedEmptyShapes(t *testing.T) {
+	h := newHarness(t)
+	seeded := seedMedia(t, h)
+	token := h.login()
+
+	resp := h.do(http.MethodGet, "/Items/"+compatID(seeded.byTitle["Congo"].ID), token, nil)
+	raw := h.bodyOf(resp)
+
+	var got struct {
+		ProviderIds  map[string]string
+		ExternalUrls []any
+	}
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("decoding: %v", err)
+	}
+	if len(got.ProviderIds) != 0 {
+		t.Errorf("an unidentified item advertises ids: %v", got.ProviderIds)
+	}
+	if len(got.ExternalUrls) != 0 {
+		t.Errorf("an unidentified item advertises urls: %v", got.ExternalUrls)
+	}
+	// Absent, not null: a client deserialising these strictly must find the
+	// shapes every fixture recorded.
+	for _, want := range []string{`"ProviderIds":{}`, `"ExternalUrls":[]`} {
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("body does not contain %s", want)
+		}
+	}
+}
+
 // TestItemImagesAre404 pins the artwork routes.
 //
 // Reelix downloads no artwork in 0.0.1, so no item has an image of any type.

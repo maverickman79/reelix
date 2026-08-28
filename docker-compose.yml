@@ -60,6 +60,11 @@ services:
       REELIX_DB_USER: ${REELIX_DB_USER:-reelix}
       REELIX_DB_PASSWORD: ${REELIX_DB_PASSWORD:?REELIX_DB_PASSWORD must be set in .env}
       REELIX_DB_SSLMODE: ${REELIX_DB_SSLMODE:-disable}
+      # Required: the server refuses to start without it, naming the variable,
+      # rather than failing on the first item of an identify pass. The :? form
+      # matches REELIX_DB_PASSWORD so a missing key fails at "compose up"
+      # rather than as a container that restarts forever.
+      REELIX_TMDB_API_KEY: ${REELIX_TMDB_API_KEY:?REELIX_TMDB_API_KEY must be set in .env}
     ports:
       - "100.95.0.122:${REELIX_HTTP_PORT:-8080}:8080"
     volumes:
