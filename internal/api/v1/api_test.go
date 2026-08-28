@@ -263,3 +263,7 @@ func (refusingProvider) SearchMovie(context.Context, metadata.MovieQuery) ([]met
 func (refusingProvider) ExternalIDs(context.Context, string) (map[string]string, error) {
 	return nil, errors.New("the fake provider never answers")
 }
+
+func (refusingProvider) AlternativeTitles(context.Context, string) ([]string, error) {
+	return nil, errors.New("the fake provider never answers")
+}

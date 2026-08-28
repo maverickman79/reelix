@@ -22,12 +22,21 @@ import (
 type fakeProvider struct {
 	candidates []metadata.Candidate
 	extra      map[string]string
+	// altTitles are the alternative titles returned per provider id.
+	altTitles map[string][]string
 
 	searchErr error
 	idsErr    error
+	altErr    error
 
 	searches int
 	idCalls  int
+	// altCalls counts alternative-title lookups. The count is the assertion in
+	// the cost tests: a well-named film must cost zero.
+	altCalls int
+	// altAsked records which provider ids were asked about, which is how the
+	// year window is checked.
+	altAsked []string
 }
 
 func (f *fakeProvider) Name() string { return "tmdb" }
@@ -46,6 +55,15 @@ func (f *fakeProvider) ExternalIDs(context.Context, string) (map[string]string, 
 		return nil, f.idsErr
 	}
 	return f.extra, nil
+}
+
+func (f *fakeProvider) AlternativeTitles(_ context.Context, id string) ([]string, error) {
+	f.altCalls++
+	f.altAsked = append(f.altAsked, id)
+	if f.altErr != nil {
+		return nil, f.altErr
+	}
+	return f.altTitles[id], nil
 }
 
 // identifyFixture is a scanned library plus an identity service over a fake
@@ -284,7 +302,7 @@ func TestAPassCannotOverwriteAManualIdentitySetMidRun(t *testing.T) {
 
 	// The pass, holding a batch it read while the item was still pending,
 	// writes its own answer.
-	if err := repo.RecordMatch(ctx, f.item.ID, "tmdb", "exact",
+	if err := repo.RecordMatch(ctx, f.item.ID, "tmdb", "exact", "primary",
 		map[string]string{"tmdb": "550"}); err != nil {
 		t.Fatalf("RecordMatch: %v", err)
 	}
@@ -435,4 +453,141 @@ func jobError(j domain.Job) string {
 		return "(no error recorded)"
 	}
 	return *j.Error
+}
+
+// TestAlternativeTitlesAreNotFetchedForAMatchedFilm is the cost assertion.
+//
+// Five of the six films in the real library match on their primary title. If
+// those cost an extra request each, a library-wide pass costs one request per
+// film for nothing. The second pass must run only on the one decline kind it
+// can rescue.
+func TestAlternativeTitlesAreNotFetchedForAMatchedFilm(t *testing.T) {
+	f := newIdentifyFixture(t, &fakeProvider{
+		candidates: []metadata.Candidate{
+			{IDs: map[string]string{"tmdb": "550"}, Title: "Fight Club", Year: 1999},
+		},
+	})
+
+	f.runIdentify(t)
+
+	if got := f.identityOf(t); got.Status != domain.IdentityMatched {
+		t.Fatalf("status = %q, want matched", got.Status)
+	}
+	if f.provider.altCalls != 0 {
+		t.Errorf("a film matching on its primary title cost %d alternative-title lookups",
+			f.provider.altCalls)
+	}
+	if got := f.identityOf(t); got.MatchedVia == nil || *got.MatchedVia != "primary" {
+		t.Errorf("matched_via = %v, want primary", got.MatchedVia)
+	}
+}
+
+// TestAlternativeTitlesRescueARenamedRelease is the Aang case end to end.
+func TestAlternativeTitlesRescueARenamedRelease(t *testing.T) {
+	f := newIdentifyFixture(t, &fakeProvider{
+		candidates: []metadata.Candidate{
+			{IDs: map[string]string{"tmdb": "980431"}, Title: "Avatar Aang: The Last Airbender", Year: 1999},
+		},
+		altTitles: map[string][]string{
+			// The scanned fixture film is Fight Club (1999); the shape being
+			// tested is a primary title that misses and an alternative that
+			// hits, which is what the Aang release does.
+			"980431": {"Aang: The Last Airbender", "Fight Club"},
+		},
+	})
+
+	f.runIdentify(t)
+
+	got := f.identityOf(t)
+	if got.Status != domain.IdentityMatched {
+		t.Fatalf("status = %q, want matched", got.Status)
+	}
+	if got.ExternalIDs["tmdb"] != "980431" {
+		t.Errorf("tmdb id = %q, want 980431", got.ExternalIDs["tmdb"])
+	}
+	if got.MatchedVia == nil || *got.MatchedVia != "alternative" {
+		t.Errorf("matched_via = %v, want alternative — this is the evidence base", got.MatchedVia)
+	}
+	if f.provider.altCalls != 1 {
+		t.Errorf("alternative-title lookups = %d, want 1", f.provider.altCalls)
+	}
+}
+
+// TestAlternativeTitlesAreNotFetchedForAnAmbiguousDecline pins the gate.
+//
+// More titles cannot resolve an ambiguity; they can only deepen it. Asking
+// would spend requests to make a decline more certain.
+func TestAlternativeTitlesAreNotFetchedForAnAmbiguousDecline(t *testing.T) {
+	f := newIdentifyFixture(t, &fakeProvider{
+		candidates: []metadata.Candidate{
+			{IDs: map[string]string{"tmdb": "a"}, Title: "Fight Club", Year: 1999},
+			{IDs: map[string]string{"tmdb": "b"}, Title: "Fight Club", Year: 1999},
+		},
+	})
+
+	f.runIdentify(t)
+
+	if got := f.identityOf(t); got.Status != domain.IdentityUnmatched {
+		t.Fatalf("status = %q, want unmatched", got.Status)
+	}
+	if f.provider.altCalls != 0 {
+		t.Errorf("an ambiguous decline cost %d alternative-title lookups", f.provider.altCalls)
+	}
+}
+
+// TestAlternativeTitleLookupsRespectTheYearWindow checks the cost control
+// against the service rather than against the helper.
+//
+// Only the candidate within a year is asked about. The others can never reach
+// a matching tier whatever they are called, so asking would buy nothing.
+func TestAlternativeTitleLookupsRespectTheYearWindow(t *testing.T) {
+	f := newIdentifyFixture(t, &fakeProvider{
+		candidates: []metadata.Candidate{
+			{IDs: map[string]string{"tmdb": "near"}, Title: "Something Else", Year: 2000},
+			{IDs: map[string]string{"tmdb": "far"}, Title: "Something Else", Year: 1970},
+			{IDs: map[string]string{"tmdb": "alsofar"}, Title: "Something Else", Year: 2020},
+		},
+	})
+
+	f.runIdentify(t)
+
+	if len(f.provider.altAsked) != 1 || f.provider.altAsked[0] != "near" {
+		t.Errorf("asked about %v, want only the candidate within a year", f.provider.altAsked)
+	}
+}
+
+// A failed alternative-title lookup must not abandon the item: the worst
+// outcome is the decline that was already there.
+func TestAFailedAlternativeTitleLookupIsNotFatal(t *testing.T) {
+	f := newIdentifyFixture(t, &fakeProvider{
+		candidates: []metadata.Candidate{
+			{IDs: map[string]string{"tmdb": "1"}, Title: "Something Else", Year: 1999},
+		},
+		altErr: errors.New("timed out"),
+	})
+
+	if job := f.runIdentify(t); job.State != domain.JobStateCompleted {
+		t.Fatalf("a failed lookup failed the pass: %s", jobError(job))
+	}
+	if got := f.identityOf(t); got.Status != domain.IdentityUnmatched {
+		t.Errorf("status = %q, want unmatched", got.Status)
+	}
+}
+
+// Rate limiting during the second pass stops the pass, exactly as it does
+// during a search: continuing would keep asking a provider that has said no.
+func TestRateLimitDuringAlternativeTitlesStopsThePass(t *testing.T) {
+	f := newIdentifyFixture(t, &fakeProvider{
+		candidates: []metadata.Candidate{
+			{IDs: map[string]string{"tmdb": "1"}, Title: "Something Else", Year: 1999},
+		},
+		altErr: metadata.ErrRateLimited,
+	})
+
+	if job := f.runIdentify(t); job.State != domain.JobStateFailed {
+		t.Errorf("job state = %s, want failed", job.State)
+	}
+	if got := f.identityOf(t); got.Status != domain.IdentityPending {
+		t.Errorf("status = %q, want pending", got.Status)
+	}
 }

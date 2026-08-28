@@ -31,6 +31,15 @@ const identifyBatch = 200
 // because an identified item is never asked about again.
 const providerPause = 250 * time.Millisecond
 
+// altTitleLookupLimit caps the alternative-title fan-out for one item.
+//
+// It only bites when the filename carries no year, because a year gives
+// metadata.AlternativeTitleCandidates a window that usually narrows the list
+// to one or two. Without a cap, an unidentified film with no year would cost
+// one request per search result, which across a library is the difference
+// between a pass being viable and not.
+const altTitleLookupLimit = 10
+
 // IdentityService identifies media items against an external provider.
 type IdentityService struct {
 	pool     *pgxpool.Pool
@@ -186,13 +195,19 @@ func (s *IdentityService) identify(ctx context.Context, jobID, libraryID uuid.UU
 
 		if decision.Matched {
 			ids := s.resolveIDs(ctx, decision.Candidate, log)
-			if err := repo.RecordMatch(ctx, item.ID, s.provider.Name(), string(decision.Confidence), ids); err != nil {
+			via := "primary"
+			if decision.ViaAlternativeTitle {
+				via = "alternative"
+			}
+			if err := repo.RecordMatch(ctx, item.ID, s.provider.Name(),
+				string(decision.Confidence), via, ids); err != nil {
 				return matched, unmatched, err
 			}
 			matched++
 			log.Info("item identified",
 				slog.String("item", item.Title),
 				slog.String("confidence", string(decision.Confidence)),
+				slog.String("matched_via", via),
 				slog.Any("ids", ids))
 			continue
 		}
@@ -231,7 +246,86 @@ func (s *IdentityService) decide(ctx context.Context, item domain.MediaItem) (me
 	if err != nil {
 		return metadata.Decision{}, err
 	}
-	return metadata.Match(query, candidates), nil
+
+	decision := metadata.Match(query, candidates)
+
+	// Only one kind of decline is worth a second look. "Nothing was called
+	// that" can be a renamed release; "too many things were called that"
+	// cannot be fixed by finding more things called that.
+	if decision.Matched || decision.Decline != metadata.DeclineNoTitleMatch {
+		return decision, nil
+	}
+
+	enriched, err := s.withAlternativeTitles(ctx, query, candidates)
+	if err != nil {
+		return metadata.Decision{}, err
+	}
+	return metadata.Match(query, enriched), nil
+}
+
+// withAlternativeTitles asks the provider for the other titles it publishes
+// for the candidates that could still match, and returns them enriched.
+//
+// WHY THIS IS GATED ON THE YEAR WINDOW, which is the question somebody looking
+// at this extra request will have:
+//
+// Alternative titles ENLARGE THE CANDIDATE POOL. That is the point — it is how
+// a renamed release is found — but it is also the cost, because a larger pool
+// can contain a second candidate carrying the same title, and the matcher
+// treats two candidates at the same tier as ambiguous and declines. So adding
+// alternative titles can turn a clean match into a decline.
+//
+// THE RECORDED CASE IS GANGLAND. Searching "Gangland" returns our film,
+// tmdb 1147610 (2025), matching on its primary title. It ALSO returns
+// tmdb 870843, a different film from 2018 whose US alternative title is
+// likewise "Gangland". Today the year gap keeps that second film out of both
+// the exact and the near tier, so the match is unaffected. Had our release
+// been a 2018 or 2019 one, this pass would have found two candidates called
+// Gangland at the same tier and refused to choose — turning a match into a
+// decline.
+//
+// THAT IS ACCEPTABLE ONLY BECAUSE THE MATCHER DECLINES RATHER THAN GUESSES.
+// The worst this change can do is produce more unmatched items, which are
+// visible and fixable. It cannot produce a wrong match, because every added
+// title is compared with the same exact equality the primary title gets, and
+// two equally exact matches are refused rather than ranked. If the matcher is
+// ever changed to break ties, this reasoning collapses and this call becomes a
+// way to attach a watch history to the wrong film.
+//
+// The year window is what keeps that cost small: a candidate outside it can
+// never reach the exact or near tier whatever it is called, so filtering it out
+// discards nothing the matcher could have used and saves the request.
+func (s *IdentityService) withAlternativeTitles(
+	ctx context.Context, q metadata.MovieQuery, candidates []metadata.Candidate,
+) ([]metadata.Candidate, error) {
+	enriched := make([]metadata.Candidate, len(candidates))
+	copy(enriched, candidates)
+
+	for _, i := range metadata.AlternativeTitleCandidates(q, candidates, altTitleLookupLimit) {
+		id := enriched[i].IDs[s.provider.Name()]
+		if id == "" {
+			continue
+		}
+
+		titles, err := s.provider.AlternativeTitles(ctx, id)
+		if errors.Is(err, metadata.ErrRateLimited) {
+			// Propagated so the pass stops, exactly as a rate-limited search
+			// does. Continuing would keep asking a provider that has just said
+			// no.
+			return nil, err
+		}
+		if err != nil {
+			// One candidate we could not ask about is not a reason to abandon
+			// the item: the others may still carry the title, and the worst
+			// outcome is the decline we already had.
+			s.log.Warn("could not fetch alternative titles",
+				slog.String("provider_id", id),
+				slog.Any(logging.KeyError, err))
+			continue
+		}
+		enriched[i].AltTitles = titles
+	}
+	return enriched, nil
 }
 
 // resolveIDs adds the other providers' ids for a matched candidate.

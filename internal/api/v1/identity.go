@@ -23,6 +23,10 @@ type identityResponse struct {
 
 	Provider   *string `json:"provider"`
 	Confidence *string `json:"confidence"`
+	// MatchedVia is "primary" or "alternative". Provenance, not confidence:
+	// both comparisons are equally exact. Counting the alternatives is how
+	// "is the matcher's threshold right" stays an answerable question.
+	MatchedVia *string `json:"matched_via"`
 	// Reason explains a decline in words meant for a person. It is the field
 	// that makes an unmatched item actionable rather than merely disappointing.
 	Reason      *string    `json:"reason"`
@@ -44,6 +48,7 @@ func newIdentityResponse(i domain.Identity) identityResponse {
 		Status:      string(i.Status),
 		Provider:    i.Provider,
 		Confidence:  i.Confidence,
+		MatchedVia:  i.MatchedVia,
 		Reason:      i.Reason,
 		AttemptedAt: i.AttemptedAt,
 		ExternalIDs: ids,
