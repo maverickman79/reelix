@@ -15,6 +15,7 @@ import (
 	"github.com/maverickman79/reelix/internal/db"
 	"github.com/maverickman79/reelix/internal/logging"
 	"github.com/maverickman79/reelix/internal/media"
+	"github.com/maverickman79/reelix/internal/metadata/tmdb"
 	"github.com/maverickman79/reelix/internal/server"
 	"github.com/maverickman79/reelix/internal/service"
 )
@@ -113,10 +114,22 @@ func run() error {
 	media := service.NewMediaService(pool)
 	playback := service.NewPlaybackService(pool)
 
+	// The provider is constructed but NOT contacted. config.Load has already
+	// refused to start without a key, which is the ffprobe guarantee applied
+	// to a credential; reachability deliberately is not a startup condition,
+	// because TMDB being down is not a reason a media server cannot serve
+	// local files. See the note on config.Metadata.
+	identity := service.NewIdentityService(
+		pool,
+		tmdb.New(cfg.Metadata.TMDBBaseURL, cfg.Metadata.TMDBAPIKey, cfg.Metadata.RequestTimeout),
+		log,
+	)
+
 	nativeAPI := v1.New(
 		service.NewAuthService(pool),
 		service.NewLibraryService(pool),
 		scans,
+		identity,
 	)
 
 	compatAPI := jellyfin.New(sessions, media, playback, log)

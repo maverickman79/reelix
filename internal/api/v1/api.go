@@ -20,11 +20,17 @@ type API struct {
 	auth      *service.AuthService
 	libraries *service.LibraryService
 	scans     *service.ScanService
+	identity  *service.IdentityService
 }
 
 // New builds the API.
-func New(authSvc *service.AuthService, libraries *service.LibraryService, scans *service.ScanService) *API {
-	return &API{auth: authSvc, libraries: libraries, scans: scans}
+func New(
+	authSvc *service.AuthService,
+	libraries *service.LibraryService,
+	scans *service.ScanService,
+	identity *service.IdentityService,
+) *API {
+	return &API{auth: authSvc, libraries: libraries, scans: scans, identity: identity}
 }
 
 // Routes returns the handler for everything under Prefix.
@@ -48,6 +54,17 @@ func (a *API) Routes() http.Handler {
 	mux.HandleFunc("POST /libraries/{id}/scan", a.requireAdmin(a.handleScanLibrary))
 	mux.HandleFunc("GET /jobs", a.requireAuth(a.handleListJobs))
 	mux.HandleFunc("GET /jobs/{id}", a.requireAuth(a.handleGetJob))
+
+	// Identification is its own pass, not a step inside a scan: a scan is
+	// local and works offline, this contacts an external provider.
+	mux.HandleFunc("POST /libraries/{id}/identify", a.requireAdmin(a.handleIdentifyLibrary))
+
+	// Reading an identity is not administrative; changing one is. A manual
+	// identity outranks every automated pass, so setting it is a privileged
+	// act rather than a preference.
+	mux.HandleFunc("GET /items/{id}/identity", a.requireAuth(a.handleGetIdentity))
+	mux.HandleFunc("PUT /items/{id}/identity", a.requireAdmin(a.handleSetIdentity))
+	mux.HandleFunc("DELETE /items/{id}/identity", a.requireAdmin(a.handleResetIdentity))
 
 	return mux
 }

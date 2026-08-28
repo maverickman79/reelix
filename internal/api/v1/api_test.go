@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -23,6 +24,7 @@ import (
 	"github.com/maverickman79/reelix/internal/db"
 	"github.com/maverickman79/reelix/internal/logging"
 	"github.com/maverickman79/reelix/internal/media"
+	"github.com/maverickman79/reelix/internal/metadata"
 	"github.com/maverickman79/reelix/internal/service"
 )
 
@@ -85,6 +87,10 @@ func newHarness(t *testing.T) *harness {
 		service.NewAuthService(pool),
 		service.NewLibraryService(pool),
 		service.NewScanService(pool, prober, discard),
+		// A provider that fails every search. API tests exercise the routes
+		// and the identity state machine, not the provider; a fake that
+		// refuses is enough to prove nothing here reaches the real TMDB.
+		service.NewIdentityService(pool, refusingProvider{}, discard),
 	)
 
 	// StripPrefix mirrors how internal/server mounts the API, so the tests
@@ -239,4 +245,21 @@ func ffprobePath() string {
 func hasFFprobe() bool {
 	_, err := exec.LookPath(ffprobePath())
 	return err == nil
+}
+
+// refusingProvider satisfies metadata.Provider without a network.
+//
+// It answers every search with an error, which is deliberate: a test that
+// silently reached the real TMDB would pass, slowly and unrepeatably, and the
+// suite must never depend on somebody else's API being up.
+type refusingProvider struct{}
+
+func (refusingProvider) Name() string { return "fake" }
+
+func (refusingProvider) SearchMovie(context.Context, metadata.MovieQuery) ([]metadata.Candidate, error) {
+	return nil, errors.New("the fake provider never answers")
+}
+
+func (refusingProvider) ExternalIDs(context.Context, string) (map[string]string, error) {
+	return nil, errors.New("the fake provider never answers")
 }
