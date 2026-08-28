@@ -309,6 +309,18 @@ func (s *ScanService) persistFile(
 		}
 		file.MediaItemID = item.ID
 
+		// Give the item somewhere for identification to land. Creating the
+		// row here rather than in the identify pass means a pass never has to
+		// discover items on its own, and ON CONFLICT DO NOTHING means a
+		// re-scan cannot drag an already-decided item back to pending — a film
+		// somebody corrected by hand must survive its file being seen again.
+		//
+		// This is a local write. It contacts no provider, which is what keeps
+		// the scan an offline operation.
+		if err := repository.NewIdentityRepository(q).Ensure(ctx, item.ID); err != nil {
+			return err
+		}
+
 		if err := tx.UpsertFile(ctx, &file); err != nil {
 			return err
 		}

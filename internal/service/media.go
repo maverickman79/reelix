@@ -87,6 +87,10 @@ type ItemDetail struct {
 	Streams []domain.MediaStream
 
 	HasSubtitles bool
+
+	// ExternalIDs are this item's identity ids, keyed by lowercase provider
+	// name. Empty when it has not been identified.
+	ExternalIDs map[string]string
 }
 
 // maxBrowseLimit bounds a page.
@@ -193,7 +197,12 @@ func (s *MediaService) Item(ctx context.Context, id uuid.UUID, userID uuid.UUID)
 		return ItemDetail{}, err
 	}
 
-	detail := ItemDetail{Item: item, State: state}
+	ids, err := repository.NewIdentityRepository(s.pool).ExternalIDsFor(ctx, []uuid.UUID{id})
+	if err != nil {
+		return ItemDetail{}, err
+	}
+
+	detail := ItemDetail{Item: item, State: state, ExternalIDs: ids[id]}
 	if len(files) == 0 {
 		return detail, nil
 	}
