@@ -30,15 +30,19 @@ const Name = "tmdb"
 type Client struct {
 	baseURL string
 	apiKey  string
+	region  string
 	http    *http.Client
 }
 
 // New returns a Client. The key is not verified here; see the note on
 // config.Metadata for why reachability is not a startup condition.
-func New(baseURL, apiKey string, timeout time.Duration) *Client {
+//
+// region is the ISO 3166-1 country whose certification becomes OfficialRating.
+func New(baseURL, apiKey, region string, timeout time.Duration) *Client {
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		apiKey:  apiKey,
+		region:  strings.ToUpper(region),
 		http:    &http.Client{Timeout: timeout},
 	}
 }
@@ -145,6 +149,113 @@ func (c *Client) AlternativeTitles(ctx context.Context, providerID string) ([]st
 		}
 	}
 	return titles, nil
+}
+
+// FetchMetadata returns the managed fields for one film.
+//
+// One request. append_to_response folds the certification lookup into the
+// detail call, so the whole per-film cost of a metadata refresh is a single
+// round trip rather than the two it would otherwise take.
+//
+// RUNTIME IS DELIBERATELY NOT COLLECTED, and this is the place someone will
+// notice the omission: TMDB returns a runtime field right beside the ones
+// below, and leaving it looks like something nobody got round to.
+//
+// Jellyfin's RunTimeTicks drives the SEEK BAR, so it has to describe the file
+// actually being played, and Reelix already has that from ffprobe. TMDB's
+// runtime describes the WORK. The two agree on an ordinary release and diverge
+// on an extended cut, a remux with different framing, or a PAL transfer —
+// which are exactly the files most likely to have been misidentified in the
+// first place. Taking the provider's number there breaks scrubbing on the
+// films where it is hardest to notice.
+//
+// A provider runtime that nothing renders is a field that exists to be wrong.
+// It has one genuine future use — a large gap between the file's duration and
+// the work's runtime is evidence that a match is wrong — and that belongs with
+// match verification, not with the fields shown to a viewer.
+func (c *Client) FetchMetadata(ctx context.Context, providerID string) (metadata.MovieMetadata, error) {
+	if providerID == "" {
+		return metadata.MovieMetadata{}, errors.New("tmdb: empty provider id")
+	}
+
+	var body struct {
+		Overview    string  `json:"overview"`
+		VoteAverage float64 `json:"vote_average"`
+		VoteCount   int     `json:"vote_count"`
+		ReleaseDate string  `json:"release_date"`
+		Genres      []struct {
+			Name string `json:"name"`
+		} `json:"genres"`
+		ReleaseDates struct {
+			Results []struct {
+				Region       string `json:"iso_3166_1"`
+				ReleaseDates []struct {
+					Certification string `json:"certification"`
+				} `json:"release_dates"`
+			} `json:"results"`
+		} `json:"release_dates"`
+	}
+
+	err := c.get(ctx, "/movie/"+url.PathEscape(providerID),
+		url.Values{"append_to_response": {"release_dates"}}, &body)
+	if err != nil {
+		return metadata.MovieMetadata{}, err
+	}
+
+	out := metadata.MovieMetadata{
+		Overview:       body.Overview,
+		OfficialRating: officialRating(body.ReleaseDates.Results, c.region),
+	}
+
+	// A film nobody has rated is not a film everybody hated. TMDB reports
+	// vote_average 0 with vote_count 0 for an unrated film, and passing that
+	// through would render as zero stars in every client that shows a rating.
+	if body.VoteCount > 0 {
+		rating := body.VoteAverage
+		out.CommunityRating = &rating
+	}
+
+	if t, err := time.Parse("2006-01-02", body.ReleaseDate); err == nil {
+		out.ReleaseDate = t
+	}
+
+	for _, g := range body.Genres {
+		if g.Name != "" {
+			out.Genres = append(out.Genres, g.Name)
+		}
+	}
+	return out, nil
+}
+
+// officialRating picks the certification for one region.
+//
+// TMDB returns a certification per release TYPE — premiere, theatrical,
+// digital, physical — and several of them are routinely empty strings for the
+// same film. The rule is the first non-empty one for the requested region.
+//
+// A REGION WITH NO CERTIFICATION YIELDS AN EMPTY RATING, and must never fall
+// back to another region. An operator who configured GB and is shown "R" has
+// no way to tell that it is a US rating: it renders exactly like a real
+// answer, so the wrong value is indistinguishable from the right one. An empty
+// field is visibly missing, which is the failure that gets noticed and fixed.
+func officialRating(results []struct {
+	Region       string `json:"iso_3166_1"`
+	ReleaseDates []struct {
+		Certification string `json:"certification"`
+	} `json:"release_dates"`
+}, region string) string {
+	for _, r := range results {
+		if !strings.EqualFold(r.Region, region) {
+			continue
+		}
+		for _, rd := range r.ReleaseDates {
+			if rd.Certification != "" {
+				return rd.Certification
+			}
+		}
+		return ""
+	}
+	return ""
 }
 
 // get performs one authenticated request and decodes the body into out.

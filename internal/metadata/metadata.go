@@ -14,6 +14,7 @@ package metadata
 import (
 	"context"
 	"errors"
+	"time"
 )
 
 // ErrRateLimited means a provider asked the caller to slow down.
@@ -70,6 +71,41 @@ type Provider interface {
 	// search result alone. That is the whole reason this exists; see
 	// AlternativeTitleCandidates for when it is worth asking.
 	AlternativeTitles(ctx context.Context, providerID string) ([]string, error)
+
+	// FetchMetadata returns the managed fields for one of this provider's
+	// items. Called once per identified film by the refresh pass.
+	FetchMetadata(ctx context.Context, providerID string) (MovieMetadata, error)
+}
+
+// MovieMetadata is what a provider knows about a film, beyond its identity.
+//
+// Every field is optional. A provider that does not know a value returns the
+// zero value, and the refresh pass stores nothing for it rather than storing a
+// blank — an absent overview and an empty one are different claims.
+//
+// NO RUNTIME FIELD, DELIBERATELY. See the note in the TMDB provider: the field
+// exists upstream and is not collected, which looks like an oversight unless
+// the reason is written down.
+type MovieMetadata struct {
+	// Overview is the plot summary.
+	Overview string
+
+	// CommunityRating is the provider's audience score on Jellyfin's 0-10
+	// scale. Nil when the provider has no score, which is different from a
+	// score of zero — a film nobody has rated is not a film everybody hated.
+	CommunityRating *float64
+
+	// OfficialRating is the certification for the configured region, e.g.
+	// "R", "15", "FSK 16". Empty when that region has no certification for
+	// this film; it is never filled from another region.
+	OfficialRating string
+
+	// ReleaseDate is the provider's release date. Zero when unknown.
+	ReleaseDate time.Time
+
+	// Genres in the provider's own order, which is meaningful: providers list
+	// the primary genre first and clients show the first few.
+	Genres []string
 }
 
 // MovieQuery is what the filename parser produced.

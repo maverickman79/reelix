@@ -45,6 +45,12 @@ const (
 	// One provider call. Identity makes one search per unidentified item, so
 	// this bounds a single request, not the pass.
 	DefaultMetadataTimeout = 15 * time.Second
+
+	// DefaultMetadataRegion selects which country's certification becomes
+	// OfficialRating. US is the default because it is right for most users of
+	// an English-language media server, not because it is correct in general —
+	// hence the setting.
+	DefaultMetadataRegion = "US"
 )
 
 // Config is the fully resolved configuration for one server process.
@@ -80,6 +86,15 @@ type Metadata struct {
 	TMDBBaseURL string
 	// RequestTimeout bounds one provider HTTP request.
 	RequestTimeout time.Duration
+
+	// Region is the ISO 3166-1 country whose film certification becomes
+	// OfficialRating, e.g. "US", "GB", "DE".
+	//
+	// A region with no certification for a film yields an EMPTY rating. It
+	// does NOT fall back to another region: showing a US rating to someone who
+	// configured GB is a wrong answer that looks like a right one, and nothing
+	// downstream could tell the difference. See officialRating.
+	Region string
 }
 
 // Media configures the external media tools.
@@ -180,6 +195,7 @@ func Load() (Config, error) {
 			TMDBAPIKey:     lookupString("REELIX_TMDB_API_KEY", ""),
 			TMDBBaseURL:    lookupString("REELIX_TMDB_BASE_URL", DefaultTMDBBaseURL),
 			RequestTimeout: DefaultMetadataTimeout,
+			Region:         strings.ToUpper(lookupString("REELIX_METADATA_REGION", DefaultMetadataRegion)),
 		},
 	}
 
@@ -272,6 +288,10 @@ func Load() (Config, error) {
 	}
 	if cfg.Metadata.TMDBBaseURL == "" {
 		fail("REELIX_TMDB_BASE_URL: must not be empty")
+	}
+	if len(cfg.Metadata.Region) != 2 {
+		fail("REELIX_METADATA_REGION: %q is not a two-letter ISO 3166-1 country code (e.g. US, GB, DE)",
+			cfg.Metadata.Region)
 	}
 
 	if len(errs) > 0 {
