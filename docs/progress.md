@@ -21,6 +21,130 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-28 — metadata fields, and two guards that made each other untestable
+
+**Completed:**
+- 0.0.2 item 3, fields half: overview, community rating, official rating,
+  release date and genres, each with per-field provenance and a lock.
+- Four allowances retired in `fixture_test.go`.
+
+**Live against real TMDB, all six films:**
+
+| Film | Rating | Cert | Premiere | Genres |
+|---|---|---|---|---|
+| Congo | 5.62 | PG-13 | 1995-06-09 | Action, Adventure, Science Fiction |
+| Fight Club | 8.44 | R | 1999-10-15 | Drama, Thriller |
+| Gangland | 7.05 | **(empty)** | 2025-08-14 | Action, Crime, Drama |
+| Idiocracy | 6.38 | R | 2006-09-01 | Comedy, Science Fiction, Adventure, Thriller |
+| The Legend of Aang | 9.19 | PG | 2026-07-24 | Animation, Action, Adventure, Fantasy |
+| The Singers | 6.80 | NR | 2026-02-17 | Music, Drama, Comedy |
+
+**Gangland's empty certification is the region rule working**, not a gap: TMDB
+has no US certification for it, and the field is left empty rather than filled
+from another region. An operator who configured GB and was shown `R` could not
+tell it was a US rating — it renders exactly like a real answer — so the wrong
+value would be indistinguishable from the right one. An empty field is visibly
+missing, which is the failure that gets noticed.
+
+**The lock, proved end to end.** A hand-corrected overview on Fight Club
+survived a full `?all=true` re-fetch — reported as `fields_skipped_locked=1` —
+while its four unlocked neighbours updated from the provider.
+
+### Two guards that made each other untestable
+
+The most useful thing in this session, and it is a **design** finding rather
+than a test one.
+
+`WriteField` checked the lock twice: once in Go before writing, and again in
+the UPDATE's `WHERE` clause. That reads as defence in depth. It is not.
+
+**Fault injection removed each guard in turn and the suite stayed green both
+times.** Two guards on one outcome mean removing either alone changes nothing
+observable — the other still produces the same result — so neither can be
+tested, and the pair can only be verified by deleting both. The redundancy did
+not make the code safer. It made the safety unverifiable.
+
+Both were replaced by **one** guard: `claimField`, an atomic conditional write
+on the provenance row that succeeds only when the field is unlocked. Every
+write goes through it, so there is one path to test and one line to remove to
+make the tests fail — which it now does, failing both lock tests including the
+genre list.
+
+It is also strictly more correct than what it replaced. A lock read in Go and
+acted on afterwards loses the race against somebody locking in between, and
+"silently overwriting a locked field" is exactly what the constitution forbids.
+Observing and claiming are now the same statement.
+
+**This is the same family as the four instances catalogued in the entry below,
+in a new dress.** Those were tests asserting an outcome reachable by more than
+one path. This is *code* offering more than one path to the same outcome, which
+produces the identical symptom. The generalisation:
+
+> **Redundant enforcement is untestable enforcement.** If two mechanisms
+> guarantee one outcome, no test can tell you whether either works. Prefer one
+> guard you can delete and watch fail over two you cannot distinguish.
+
+The counter-measure is the same: inject, and inject each part separately. Both
+guards were written in good faith and each looked correct in isolation.
+
+**Verified:**
+- `gofmt`, `go vet ./...` clean. Full suite green with a database and without.
+- **Fault-injected five ways.** Three caught immediately (an edit that does not
+  lock, a default refresh that re-fetches everything, an absent provider field
+  clearing a stored one). Two were NOT — one per redundant guard — which is
+  what produced the finding above. After collapsing to one guard, removing it
+  fails both lock tests.
+- Live: migration 11 applied on restart; six films fetched; the lock survived a
+  full re-fetch.
+
+**In flight:**
+- Nothing.
+
+**Blocked:**
+- Nothing.
+
+**Decisions made:**
+- **Runtime is deliberately not collected**, and the reason sits in
+  `FetchMetadata` where someone will notice the omission, because TMDB returns
+  a runtime field beside the ones that are collected. `RunTimeTicks` drives the
+  seek bar and must describe the file, which ffprobe measured; the provider's
+  runtime describes the work. They agree on an ordinary release and diverge on
+  an extended cut or a PAL transfer — the files most likely to be misidentified
+  in the first place. Its one genuine future use is as a **match-verification**
+  signal: a large gap between the file's duration and the work's runtime is
+  evidence the identity is wrong.
+- **An edit locks the field it touches.** A default for one operation, not a
+  merging of Source and Locked, which remain independent as the constitution
+  models them. It implies a lock because a correction that silently reverts is
+  one nobody makes twice — the reasoning that made a manual identity outrank
+  every pass.
+- **The default refresh considers only items never fetched**; `?all=true`
+  forces a full re-fetch. Making the expensive form explicit means nobody
+  discovers a per-film request across 13TB by running the obvious command.
+- **A field the provider does not know is skipped, not written null.**
+  Overwriting a good value with "the provider has nothing" loses it to a bad
+  fetch.
+- **`CriticRating` keeps its allowance**, with a corrected reason: TMDB
+  publishes no critic score, so it has no source rather than an unfetched one.
+  It also replaced Overview as the example in `TestAbsenceNeedsAnAllowance`,
+  which had to change because Overview stopped being an allowed field — the
+  allowance list doing its job.
+- **`ProductionYear` prefers the provider's release year**, falling back to the
+  parsed one. A boundary decision: `media_items.year` stays as parsed because
+  it is the matcher's input.
+
+**Next step:**
+- **Artwork**, the remaining half of item 3, and a different kind of problem:
+  storage and serving rather than fetching. The two landmines cleared earlier
+  were clearing the way for exactly this, and both now need using rather than
+  merely being fixed — the image routes are unauthenticated and the type is
+  canonicalised, so the handler has somewhere to look an image up.
+- Confirm on the SK1 that the fields render. Unlike the `ProviderIds` change
+  this one **should** be visible: overviews, ratings and genres on the detail
+  screen.
+
+---
+
 ## 2026-08-28 — alternative titles, and the evidence base that replaces the hand-resolved list
 
 **Completed:**
