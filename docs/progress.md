@@ -21,6 +21,152 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-28 — alternative titles, and the evidence base that replaces the hand-resolved list
+
+**Completed:**
+- Alternative-title matching, gated and year-windowed.
+- `matched_via` on `media_item_identity`, which is the point of the entry below.
+
+**The whole library, reset and re-identified live against real TMDB:**
+
+| Film | Status | Confidence | Via | TMDB |
+|---|---|---|---|---|
+| Congo (1995) | matched | exact | primary | 10329 |
+| Fight Club (1999) | matched | exact | primary | 550 |
+| Gangland (2025) | matched | exact | primary | 1147610 |
+| Idiocracy (2006) | matched | exact | primary | 7512 |
+| **The Legend of Aang (2026)** | **matched** | **exact** | **alternative** | **980431** |
+| The Singers (2026) | matched | exact | primary | 1442908 |
+
+**6/6, and every id identical to the run before.** The film that needed hand
+resolution now identifies on its own, to the same id a person chose, and no
+existing match moved.
+
+### Why this is not "widening the matcher"
+
+The comparison is unchanged. An alternative title is compared with the same
+exact equality the primary title gets — **more places to look, not a looser
+look.** A looser comparison invents matches; more exact comparisons can only
+find matches that were already there.
+
+Measured before building, across all six films: five outcomes identical, one
+`none` → `exact`. Nothing became ambiguous, nothing moved.
+
+### The Gangland finding, which is now in the code
+
+Searching "Gangland" returns our 2025 film on its primary title **and**
+tmdb 870843 — a different 2018 film whose US alternative title is also
+"Gangland". The year gap keeps it out of every tier, so today nothing changes.
+**Had our release been a 2018 one, this pass would have found two candidates
+called Gangland at the same tier and refused to choose — turning a match into
+a decline.**
+
+That is the real cost of the change: **alternative titles enlarge the candidate
+pool, and a larger pool can manufacture ambiguity.** It is acceptable only
+because the matcher declines rather than guesses, so the worst case is a
+*visible* unmatched item and never a wrong match.
+
+**The reasoning lives at the call site in `withAlternativeTitles`, not only
+here**, because the extra request is where somebody will ask why it is gated on
+a year window. It also says what breaks the argument: *if the matcher is ever
+changed to break ties, this call becomes a way to attach a watch history to the
+wrong film.*
+
+### The evidence base, and the thing most likely to erode
+
+The justification for declining rather than guessing has rested on the
+**hand-resolved list** — the films a pass declined that a person had to
+identify manually. One in six on the first real library, and it was a renamed
+release. A short list means the threshold is right; a long one would mean it is
+set wrong.
+
+**This change empties that list.** That is the point of it, and also the
+problem: the measurement that justified the threshold disappears along with the
+failure it was measuring. Without a replacement, "we decline rather than guess"
+becomes an assertion nobody can check — and the person most likely to need to
+check it is the one staring at a hundred unmatched films in a much larger
+library, deciding whether to loosen something.
+
+`matched_via` is the replacement, and it is the reason a column was added for a
+value nothing branches on. **A film matched via an alternative title is one the
+old matcher would have declined**, so counting them answers the same question
+the hand-resolved list answered, without anyone doing the work by hand to
+generate the evidence:
+
+```sql
+SELECT matched_via, count(*) FROM media_item_identity
+ WHERE status = 'matched' GROUP BY matched_via;
+```
+
+Today: `primary 5`, `alternative 1`.
+
+**How to read it later, stated now while nothing is at stake:**
+
+- **A small `alternative` count and a short unmatched list** means the threshold
+  is right. Nothing to do.
+- **A large `alternative` count** means renamed releases are common in this
+  library. That is the change working, not a problem.
+- **A long unmatched list** is the case that matters, and the instinct will be
+  to loosen the comparison. **Read the reasons first.** They are stored per row
+  precisely so the failures can be counted by shape. If they are ambiguity
+  declines, loosening makes it *worse* — more candidates, more ties, more
+  refusals. If they are `no_title_match` on names no provider publishes in any
+  form, the answer is better input (the filename parser, or another provider),
+  not a fuzzier comparison.
+- **The failure shape is the next piece of evidence, not a reason to widen.**
+  Every safe change so far has been of the form "compare exactly against more
+  things"; every dangerous one is of the form "compare less exactly". The
+  hand-resolved list is gone, but that distinction is the thing it was
+  protecting, and it survives it.
+
+**Verified:**
+- `gofmt`, `go vet ./...` clean. Full suite green with a database and without.
+- **Fault-injected four ways, each caught**: removing the decline gate (an
+  ambiguous decline then cost two needless lookups), removing the year window
+  (caught at both the helper and the service level), breaking a tie instead of
+  declining, and never recording `alternative` provenance.
+- **One injection broke the build, which is not a result.** Redone so it
+  compiled before being believed — the rider written into the previous entry,
+  applied the first time it came up.
+- Live: all six reset and re-identified; migration 10 applied on restart.
+- Call counts are asserted by unit test rather than counted over the wire: zero
+  alternative-title lookups for a film matching on its primary, exactly one for
+  the rescue, none for an ambiguous decline.
+
+**In flight:**
+- Nothing.
+
+**Blocked:**
+- Nothing.
+
+**Decisions made:**
+- **A column was added for a value nothing reads**, which normally would not
+  earn a migration. It earns one here because it is the successor to the
+  evidence base this change destroys, and an argument that cannot be checked is
+  one that gets overridden by whoever is most frustrated.
+- **Not backfilled.** Rows written before migration 10 carry NULL. Backfilling
+  would mean re-identifying films that are already correct in order to learn how
+  they were found; the counts are read forward.
+- **Only `no_title_match` triggers the second pass.** An ambiguous decline is
+  not retried, because more titles can only deepen an ambiguity. A
+  `year_mismatch` is not retried either: the title matched, so the film family
+  was found and the failure is not a naming one. Both are narrower than they
+  could be, deliberately.
+- **All regions' titles are used, not a locale subset.** Reelix does not know
+  which region a file came from, and guessing would drop the correct title for a
+  release the operator actually has.
+
+**Next step:**
+- The identify curl sequence, to close `POST /libraries/{id}/identify` — the
+  one path still never driven by a real caller.
+- Confirm on the SK1 that nothing regressed now items carry `ProviderIds`.
+  Wholphin reads it in one place, for external links it then omits, so the
+  expected result is **no visible change** — worth confirming precisely because
+  it should be invisible.
+- Then the fields that hang off an identity, starting with artwork.
+
+---
+
 ## 2026-08-28 — the identify pass runs, and the dominant test failure mode named
 
 **Completed:**
