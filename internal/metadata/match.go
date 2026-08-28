@@ -29,35 +29,58 @@ import (
 // because it looks like their own mistake. Unmatched is visible and fixable.
 func Match(q MovieQuery, candidates []Candidate) Decision {
 	if len(candidates) == 0 {
-		return Decision{Reason: "the provider returned no candidates"}
+		return Decision{
+			Decline: DeclineNoCandidates,
+			Reason:  "the provider returned no candidates",
+		}
 	}
 
 	want := normaliseTitle(q.Title)
 	if want == "" {
-		return Decision{Reason: "the parsed title is empty after normalisation"}
+		return Decision{
+			Decline: DeclineUnusableTitle,
+			Reason:  "the parsed title is empty after normalisation",
+		}
 	}
 
+	// A candidate is titled if its PRIMARY title matches, or any alternative
+	// title the caller has attached does. Both comparisons are the same exact
+	// equality; an alternative title is more places to look, not a looser look.
 	var titled []Candidate
+	var viaAlt bool
 	for _, c := range candidates {
-		if normaliseTitle(c.Title) == want {
+		switch {
+		case normaliseTitle(c.Title) == want:
 			titled = append(titled, c)
+		case matchesAnAlternative(c, want):
+			titled = append(titled, c)
+			viaAlt = true
 		}
 	}
 	if len(titled) == 0 {
-		return Decision{Reason: fmt.Sprintf(
-			"no candidate title matches %q (%d returned, best was %q)",
-			q.Title, len(candidates), candidates[0].Title)}
+		return Decision{
+			Decline: DeclineNoTitleMatch,
+			Reason: fmt.Sprintf(
+				"no candidate title matches %q (%d returned, best was %q)",
+				q.Title, len(candidates), candidates[0].Title),
+		}
 	}
 
 	// No year in the filename: the title is all there is, so it has to be
 	// unique on its own.
 	if q.Year == 0 {
 		if len(titled) > 1 {
-			return Decision{Reason: fmt.Sprintf(
-				"%d candidates share the title %q and the filename carries no year",
-				len(titled), q.Title)}
+			return Decision{
+				Decline: DeclineAmbiguous,
+				Reason: fmt.Sprintf(
+					"%d candidates share the title %q and the filename carries no year",
+					len(titled), q.Title),
+			}
 		}
-		return Decision{Matched: true, Candidate: titled[0], Confidence: ConfidenceTitleOnly}
+		return Decision{
+			Matched: true, Candidate: titled[0], Confidence: ConfidenceTitleOnly,
+			ViaAlternativeTitle: viaAlt,
+		}
 	}
 
 	var exact, near []Candidate
@@ -71,23 +94,85 @@ func Match(q MovieQuery, candidates []Candidate) Decision {
 	}
 
 	if len(exact) == 1 {
-		return Decision{Matched: true, Candidate: exact[0], Confidence: ConfidenceExact}
+		return Decision{
+			Matched: true, Candidate: exact[0], Confidence: ConfidenceExact,
+			ViaAlternativeTitle: matchedViaAlternative(exact[0], want),
+		}
 	}
 	if len(exact) > 1 {
-		return Decision{Reason: fmt.Sprintf(
-			"%d candidates match %q (%d) exactly", len(exact), q.Title, q.Year)}
+		return Decision{
+			Decline: DeclineAmbiguous,
+			Reason: fmt.Sprintf("%d candidates match %q (%d) exactly",
+				len(exact), q.Title, q.Year),
+		}
 	}
 
 	if len(near) == 1 {
-		return Decision{Matched: true, Candidate: near[0], Confidence: ConfidenceYearNear}
+		return Decision{
+			Matched: true, Candidate: near[0], Confidence: ConfidenceYearNear,
+			ViaAlternativeTitle: matchedViaAlternative(near[0], want),
+		}
 	}
 	if len(near) > 1 {
-		return Decision{Reason: fmt.Sprintf(
-			"%d candidates match %q within a year of %d", len(near), q.Title, q.Year)}
+		return Decision{
+			Decline: DeclineAmbiguous,
+			Reason: fmt.Sprintf("%d candidates match %q within a year of %d",
+				len(near), q.Title, q.Year),
+		}
 	}
 
-	return Decision{Reason: fmt.Sprintf(
-		"the title %q matches but no candidate is within a year of %d", q.Title, q.Year)}
+	return Decision{
+		Decline: DeclineYearMismatch,
+		Reason: fmt.Sprintf("the title %q matches but no candidate is within a year of %d",
+			q.Title, q.Year),
+	}
+}
+
+// matchesAnAlternative reports whether any alternative title equals want.
+func matchesAnAlternative(c Candidate, want string) bool {
+	for _, alt := range c.AltTitles {
+		if normaliseTitle(alt) == want {
+			return true
+		}
+	}
+	return false
+}
+
+// matchedViaAlternative reports whether a chosen candidate was reachable only
+// through an alternative title. Provenance for the row, so that "how many
+// films needed alternative titles" stays an answerable question rather than a
+// thing somebody remembers.
+func matchedViaAlternative(c Candidate, want string) bool {
+	return normaliseTitle(c.Title) != want && matchesAnAlternative(c, want)
+}
+
+// AlternativeTitleCandidates returns the indices of candidates worth fetching
+// alternative titles for, given how the matcher will use them.
+//
+// THIS IS A COST CONTROL WITH A CORRECTNESS ARGUMENT, not a heuristic. A
+// candidate outside the year window can never reach the exact or year_near
+// tier no matter what it is called, so asking about it buys an API call and
+// nothing else. The filter therefore discards only candidates the matcher had
+// already ruled out.
+//
+// When the filename carries no year there is no window, and title_only demands
+// a unique title anyway. The list is capped there rather than fetched in full:
+// an unbounded fan-out per unidentified film is the difference between a
+// library-wide pass being viable and not.
+func AlternativeTitleCandidates(q MovieQuery, candidates []Candidate, limit int) []int {
+	var out []int
+	for i, c := range candidates {
+		if q.Year != 0 {
+			if diff := c.Year - q.Year; diff < -1 || diff > 1 {
+				continue
+			}
+		}
+		out = append(out, i)
+		if limit > 0 && len(out) >= limit {
+			break
+		}
+	}
+	return out
 }
 
 // normaliseTitle reduces a title to the form two spellings of the same film

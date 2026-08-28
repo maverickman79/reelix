@@ -60,6 +60,16 @@ type Provider interface {
 	// did not, so the cost is one request per identified film rather than one
 	// per result.
 	ExternalIDs(ctx context.Context, providerID string) (map[string]string, error)
+
+	// AlternativeTitles returns the other titles this provider publishes for
+	// one of its items — regional releases, working titles, the name a
+	// distributor used.
+	//
+	// A search response carries the primary title only, so a file named after
+	// a release title the provider files as an ALTERNATIVE cannot match on the
+	// search result alone. That is the whole reason this exists; see
+	// AlternativeTitleCandidates for when it is worth asking.
+	AlternativeTitles(ctx context.Context, providerID string) ([]string, error)
 }
 
 // MovieQuery is what the filename parser produced.
@@ -82,6 +92,16 @@ type Candidate struct {
 	// Title and Year are for scoring only and are never persisted.
 	Title string
 	Year  int
+
+	// AltTitles are other titles the provider publishes for this same item.
+	// Empty until a caller has asked for them, which it does only when the
+	// primary titles produced no match at all.
+	//
+	// They are compared with exactly the same equality the primary title gets.
+	// This is a LARGER SET OF EXACT COMPARISONS, not a fuzzier one, and the
+	// distinction is load bearing: a looser comparison invents matches, while
+	// more exact comparisons can only find ones that were already there.
+	AltTitles []string
 }
 
 // Confidence records how a match was reached, and is stored alongside it so a
@@ -113,4 +133,35 @@ type Decision struct {
 	// Reason is operator-facing text explaining a decline. It is stored and
 	// shown; nothing branches on its contents.
 	Reason string
+	// Decline classifies a refusal for the one caller that has to act on the
+	// kind rather than the words. Zero when Matched.
+	Decline DeclineKind
+	// ViaAlternativeTitle records that the match was made against a title the
+	// provider files as an alternative rather than its primary one. Provenance,
+	// not confidence: the comparison was equally exact either way.
+	ViaAlternativeTitle bool
 }
+
+// DeclineKind classifies why a match was refused.
+//
+// It exists so the identify pass can tell "nothing was called that" from "too
+// many things were called that". Only the first is worth a second look with
+// alternative titles: more titles cannot resolve an ambiguity, they can only
+// deepen it.
+type DeclineKind string
+
+const (
+	// DeclineNoCandidates means the provider returned nothing at all.
+	DeclineNoCandidates DeclineKind = "no_candidates"
+	// DeclineNoTitleMatch means candidates came back and none carried the
+	// title. This is the only kind alternative titles can rescue.
+	DeclineNoTitleMatch DeclineKind = "no_title_match"
+	// DeclineAmbiguous means more than one candidate matched at the best
+	// available tier.
+	DeclineAmbiguous DeclineKind = "ambiguous"
+	// DeclineYearMismatch means the title matched but no candidate was within
+	// a year. The film family was found, so the failure is not a naming one.
+	DeclineYearMismatch DeclineKind = "year_mismatch"
+	// DeclineUnusableTitle means the parsed title normalised to nothing.
+	DeclineUnusableTitle DeclineKind = "unusable_title"
+)

@@ -111,6 +111,42 @@ func (c *Client) ExternalIDs(ctx context.Context, providerID string) (map[string
 	return ids, nil
 }
 
+// AlternativeTitles returns the other titles TMDB publishes for one film.
+//
+// TMDB files a film under one primary title and any number of regional and
+// working titles beneath it. A search response carries the primary only, so a
+// file named after a release title TMDB considers alternative cannot match on
+// the search result alone — which is exactly the Aang case that had to be
+// resolved by hand.
+//
+// Every title is returned regardless of region. Restricting to a locale would
+// need Reelix to know which region a file came from, which it does not, and
+// guessing would drop the correct title for a release the operator actually
+// has. The matcher compares them all with the same exact equality, so an extra
+// title costs a string comparison and cannot invent a match.
+func (c *Client) AlternativeTitles(ctx context.Context, providerID string) ([]string, error) {
+	if providerID == "" {
+		return nil, errors.New("tmdb: empty provider id")
+	}
+
+	var body struct {
+		Titles []struct {
+			Title string `json:"title"`
+		} `json:"titles"`
+	}
+	if err := c.get(ctx, "/movie/"+url.PathEscape(providerID)+"/alternative_titles", nil, &body); err != nil {
+		return nil, err
+	}
+
+	titles := make([]string, 0, len(body.Titles))
+	for _, t := range body.Titles {
+		if t.Title != "" {
+			titles = append(titles, t.Title)
+		}
+	}
+	return titles, nil
+}
+
 // get performs one authenticated request and decodes the body into out.
 //
 // The API key travels as a query parameter, which is how TMDB v3 authenticates.
