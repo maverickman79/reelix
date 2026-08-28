@@ -21,20 +21,27 @@ non-trivial change.
 | `CLAUDE.md` (this file) | Every session, first |
 | `docs/progress.md` | Every session, second — this is where we left off |
 | `docs/constitution.md` | Before any architectural or cross-cutting change |
-| `docs/mvp-0.0.1.md` | Before implementing anything in the current milestone |
+| `docs/mvp-0.0.2.md` | Before implementing anything in the current milestone |
 | `docs/compat-capture.md` | Before touching the Jellyfin compatibility layer |
 
 ---
 
 ## Current milestone
 
-**Version 0.0.1.** One goal:
+**Version 0.0.2.** Five items, in this order:
 
-> Wholphin (Android TV) can discover Reelix, authenticate, browse one local
-> movie library, select a movie, and direct-play it — including seeking.
+> 1. Playback state — **done**
+> 2. Stream metadata — **done**
+> 3. Metadata scraping
+> 4. Emby/Jellyfin watch-history importer
+> 5. Admin GUI
 
-Full scope, exclusions, and completion criteria are in `docs/mvp-0.0.1.md`.
+Multi-client validation was pulled forward out of order and is partly done:
+Wholphin, VidHub and jellyfin-web all play.
+
+Full scope, exclusions, and completion criteria are in `docs/mvp-0.0.2.md`.
 The exclusion list there is binding. Do not implement excluded features.
+`docs/mvp-0.0.1.md` is closed and kept for reference only.
 
 ---
 
@@ -100,7 +107,8 @@ Before changing code:
    architectural.
 5. Make the smallest coherent change.
 6. Run applicable tests.
-7. Run `gofmt`, `go vet`, and the project linter.
+7. Run `gofmt` and `go vet ./...`. There is no other linter configured;
+   do not go looking for one.
 8. Report exactly what changed.
 
 Do not implement features that were not requested.

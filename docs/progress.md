@@ -21,6 +21,93 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-28 — the deferred hardware batch closes, and 0.0.2 gets a scope doc
+
+**Completed:**
+- **All three deferred hardware checks pass on the SK1.** This closes a batch
+  carried across three sessions.
+- `docs/mvp-0.0.2.md`, new. 0.0.2's definition of done existed only as a list
+  buried in the v0.0.1 retrospective, which is not where a future session
+  looks.
+- `CLAUDE.md`: current milestone is 0.0.2, items 1 and 2 marked done, document
+  table repointed.
+- `CLAUDE.md` step 7 no longer says to run a linter that does not exist.
+
+**The three confirmations, verbatim from the device:**
+
+1. **Idiocracy resume, end to end.** Plays, stops, appears in Continue Watching
+   at the right position, resumes from there, and passing the end removes it
+   from that row. The database agrees: `played=t`, `play_count=1`,
+   `position_seconds=0`.
+2. **The Singers reads `English DD+ 5.1 (Default)`.** The nulls are gone. It is
+   the file's only audio track, which is correct for a single-stream WEB-DL.
+3. **Fight Club's picker shows `DTS-HD MA 5.1` and the commentary tracks**,
+   each named by who is speaking, **with the default track pre-selected.**
+
+**`IsDefault` is now verified by the only means available**, and this is the
+part worth carrying. `IsDefault` and `IsForced` are **structurally
+unconfirmable by the fixture suite**: `false` and `true` are the same JSON
+type, so the comparison passes identically on a wrong answer. No amount of
+test-writing could have closed this one. A real client on real hardware was
+always the only instrument that could read it, and it has now read it. When a
+field's *value* drives client branching rather than its type, plan for hardware
+from the start rather than discovering the gap afterwards.
+
+**The 43 Mbit/s ceiling is a property of one link, not of the profile
+decision.** Fight Club direct-plays on the SK1. The stall recorded last session
+was the Shield's Tailscale path at the second house. `docs/mvp-0.0.2.md` says
+so where the measurement is quoted, because "the 76 GB remux stalls" reads as a
+statement about the file if the link is not named alongside it.
+
+**One observation not yet explained, and it is a client question rather than a
+server one.** The report is that a finished Idiocracy "leaves it in Recently
+Added". Server-side the exclusion demonstrably works: across the completion at
+16:17:29, `/Items/Latest` went from 4795 to 4009 bytes and stayed there two
+minutes later, `/UserItems/Resume` returned an empty result, and
+`handleLatestItems` sets `ExcludePlayed` unconditionally. No other browse
+endpoint was called in that window. So whichever row still shows the film is
+either fed by something other than `/Items/Latest` or is a stale client-side
+render. **Not recorded as a bug in either direction** — one glance at the SK1
+next time it is out settles it.
+
+**Verified:**
+- Documentation only in this change; no code touched, so no test run applies.
+- The playback-state claim was checked against the database rather than taken
+  from the screen, and the `/Items/Latest` byte drop was read from the app log.
+
+**In flight:**
+- The two artwork landmines, fixed but not committed at the time of writing —
+  see the next entry.
+
+**Blocked:**
+- Nothing.
+
+**Decisions made:**
+- **The wording was fixed rather than a linter added.** `CLAUDE.md` step 7 had
+  demanded "the project linter" since the beginning and there has never been
+  one: no `.golangci*`, no `Makefile`, no CI directory, nothing installed.
+  Adding `golangci-lint` is a real toolchain decision under the dependency
+  rules in `docs/constitution.md` — a version pin, a config, a first-pass
+  triage of an existing codebase, and somewhere to run it — and it does not
+  belong inside a documentation fix. It is also **not what has been catching
+  the bugs here**: the last four were found by fault injection, by probing the
+  reference, and by reading a client bundle, and no linter would have found any
+  of them. Propose it on its own merits when a JS toolchain arrives with the
+  admin GUI. A rule nobody can follow is worse than no rule.
+- **Multi-client validation being pulled forward is recorded as a plan change,
+  not an accident.** It was scheduled after 0.0.2 and happened between items 2
+  and 3, driven by real clients failing against the running server rather than
+  by anticipation. `docs/mvp-0.0.2.md` has a section for it so nobody
+  reconstructs it from the git log.
+
+**Next step:**
+- The two artwork landmines, resolved ahead of scraping rather than during it.
+- Then metadata scraping, **identity first**: the provider interface and
+  external IDs, before any field fetching. Artwork and the watch-history
+  importer both sit on that model.
+
+---
+
 ## 2026-08-27 — Gangland: the container asymmetry was half right
 
 **Completed:**
