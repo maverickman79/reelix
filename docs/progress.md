@@ -133,15 +133,43 @@ guards were written in good faith and each looked correct in isolation.
   parsed one. A boundary decision: `media_items.year` stays as parsed because
   it is the matcher's input.
 
+**Handed to the operator, and NOT blocking anything:**
+
+Hardware and browser verification of this slice is deferred to the next
+session by agreement. It gates no further work — artwork can be planned and
+built against it — so the next session should **not** wait on it or repeat it.
+
+What has and has not been proved matters here, so it is written out rather
+than left to be re-derived:
+
+- **Proved:** the values are in the database (six films, real overviews,
+  ratings, certifications, dates and genres); the lock survives a full
+  re-fetch; the DTO renders them under test, including the fixture comparison
+  with four allowances retired.
+- **Not proved:** the Jellyfin JSON response carrying real metadata has never
+  been fetched over HTTP. `/Items/{id}` needs a token, which this session did
+  not have — the same limit that deferred the identify route, and the same
+  resolution.
+
+What to look for, on the SK1 and in jellyfin-web on `:8099`. **Unlike the
+`ProviderIds` change, this one SHOULD be visible** — an invisible result here
+is a fault, not a pass:
+
+- An overview on the detail screen, a star rating, a certification, and genre
+  chips.
+- **Gangland's certification legitimately empty.** TMDB has no US
+  certification for it. An empty field there is correct; a rating appearing
+  would mean something fell back to another region.
+- `The Legend of Aang` reading as the 2026 film — it is the one identified via
+  an alternative title, so a wrong overview there would be the first visible
+  sign of a bad match.
+
 **Next step:**
 - **Artwork**, the remaining half of item 3, and a different kind of problem:
   storage and serving rather than fetching. The two landmines cleared earlier
   were clearing the way for exactly this, and both now need using rather than
   merely being fixed — the image routes are unauthenticated and the type is
   canonicalised, so the handler has somewhere to look an image up.
-- Confirm on the SK1 that the fields render. Unlike the `ProviderIds` change
-  this one **should** be visible: overviews, ratings and genres on the detail
-  screen.
 
 ---
 
