@@ -94,6 +94,56 @@ type MediaItem struct {
 	UpdatedAt  time.Time
 }
 
+// IdentityStatus is how far identification has got with one media item.
+//
+// Three states rather than a nullable id, because "no external id" would
+// otherwise mean both "never attempted" and "attempted and found nothing" —
+// and the watch-history importer has to retry the first and leave the second
+// alone. A null cannot say which is which.
+type IdentityStatus string
+
+const (
+	// IdentityPending has never been attempted, or is queued for another try.
+	IdentityPending IdentityStatus = "pending"
+	// IdentityMatched has an identity, attributed to a provider.
+	IdentityMatched IdentityStatus = "matched"
+	// IdentityUnmatched was attempted and deliberately declined. It is a
+	// success: a visible, fixable gap rather than a silent wrong answer.
+	IdentityUnmatched IdentityStatus = "unmatched"
+	// IdentityManual was set by a person. No pass may overwrite it.
+	IdentityManual IdentityStatus = "manual"
+)
+
+// Identity is what a media item was identified as, and how.
+//
+// It carries no title, overview, rating or artwork. Those hang off an identity
+// once one exists; keeping them out is what lets the importer and the artwork
+// fetcher depend on this without depending on each other.
+type Identity struct {
+	MediaItemID uuid.UUID
+	Status      IdentityStatus
+
+	// Provider is the lowercase internal name that decided, e.g. "tmdb". Nil
+	// while pending and for an unmatched item, because nothing claimed it.
+	Provider *string
+	// Confidence is how the match was reached: exact, year_near, title_only.
+	// Nil unless Status is matched.
+	Confidence *string
+	// Reason explains a decline in operator-facing words. Nil unless Status is
+	// unmatched. Nothing branches on its contents.
+	Reason *string
+	// AttemptedAt is when identification last ran. Nil while pending.
+	AttemptedAt *time.Time
+
+	// ExternalIDs are keyed by lowercase provider name — "tmdb", "imdb". The
+	// capitalised spellings Jellyfin clients expect are decided at the
+	// compatibility boundary, like DisplayTitle and ChannelLayout.
+	ExternalIDs map[string]string
+
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 // ServerSettings is the server's own identity.
 //
 // ServerID is 32 lowercase hex characters. Clients cache it and treat a change
@@ -150,10 +200,18 @@ type Session struct {
 	LastActivityAt time.Time
 }
 
-// JobKind is the type of background work. 0.0.1 has one.
+// JobKind is the type of background work.
 type JobKind string
 
-const JobKindLibraryScan JobKind = "library_scan"
+const (
+	// JobKindLibraryScan walks a library, probing what changed. Local: it
+	// works with the network unplugged.
+	JobKindLibraryScan JobKind = "library_scan"
+	// JobKindLibraryIdentify asks an external provider which films a
+	// library's items are. Remote, which is exactly why it is not a step
+	// inside a scan — a scan must not fail because someone else's API is down.
+	JobKindLibraryIdentify JobKind = "library_identify"
+)
 
 // JobState is where a job is in its lifecycle.
 type JobState string
