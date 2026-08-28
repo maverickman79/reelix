@@ -133,8 +133,8 @@ func TestRateLimitIsItsOwnError(t *testing.T) {
 	})
 
 	_, err := c.SearchMovie(context.Background(), metadata.MovieQuery{Title: "Fight Club"})
-	if !errors.Is(err, ErrRateLimited) {
-		t.Errorf("err = %v, want ErrRateLimited", err)
+	if !errors.Is(err, metadata.ErrRateLimited) {
+		t.Errorf("err = %v, want metadata.ErrRateLimited", err)
 	}
 }
 

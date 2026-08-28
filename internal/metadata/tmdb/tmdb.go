@@ -26,11 +26,6 @@ import (
 // used as the key in a Candidate's ID map.
 const Name = "tmdb"
 
-// ErrRateLimited means TMDB asked the caller to slow down. It is separated
-// from other failures because it is the one error where retrying the same
-// request later is the correct response rather than a waste.
-var ErrRateLimited = errors.New("tmdb rate limited")
-
 // Client is a TMDB provider.
 type Client struct {
 	baseURL string
@@ -145,7 +140,7 @@ func (c *Client) get(ctx context.Context, path string, params url.Values, out an
 
 	switch {
 	case resp.StatusCode == http.StatusTooManyRequests:
-		return fmt.Errorf("%w on %s", ErrRateLimited, path)
+		return fmt.Errorf("%w: tmdb %s", metadata.ErrRateLimited, path)
 	case resp.StatusCode == http.StatusUnauthorized:
 		// The one status worth naming precisely: it means the key is wrong,
 		// which no amount of retrying fixes.

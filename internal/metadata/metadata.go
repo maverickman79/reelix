@@ -11,7 +11,21 @@
 // is field fetching, which is the next slice, not this one.
 package metadata
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+// ErrRateLimited means a provider asked the caller to slow down.
+//
+// It lives on the interface rather than in one provider's package because the
+// identify pass has to act on it — stopping rather than continuing — and a
+// service that had to import a concrete provider to recognise its errors would
+// be coupled to the implementation it was written to be independent of.
+//
+// It is the one provider error where retrying later is the correct response
+// rather than a wasted request.
+var ErrRateLimited = errors.New("provider rate limited")
 
 // Provider searches an external catalogue for films.
 //
