@@ -21,6 +21,157 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-28 — the identify pass runs, and the dominant test failure mode named
+
+**Completed:**
+- TMDB key in `.env` (gitignored, never committed), placeholder in
+  `.env.example`, and passed through `docker-compose.yml` with the `:?` form so
+  a missing key fails at `compose up` rather than as a container that restarts
+  forever.
+- **The identify pass ran against real TMDB over the six-film library.**
+- The one decline resolved by hand.
+- **The recurring test failure mode written up as a pattern**, below.
+
+### The pass: five of six matched, every one `exact`
+
+| Film | Status | Confidence | TMDB | IMDb |
+|---|---|---|---|---|
+| Congo (1995) | matched | exact | 10329 | tt0112715 |
+| Fight Club (1999) | matched | exact | 550 | tt0137523 |
+| **Gangland (2025)** | **matched** | **exact** | **1147610** | **tt28263483** |
+| Idiocracy (2006) | matched | exact | 7512 | tt0387808 |
+| The Singers (2026) | matched | exact | 1442908 | tt33508491 |
+| The Legend of Aang - The Last Airbender (2026) | **unmatched → manual** | — | 980431 | tt18259538 |
+
+**Gangland is the answer to the question that was asked of it.** The reference
+identified it as tmdb 1147610 / imdb tt28263483; Reelix produced the same two
+ids at `exact` confidence. **We are not stricter than the reference here** — the
+matcher is doing the ordinary thing on ordinary input, and the conservative
+policy costs nothing on five of six films.
+
+A second pass reported `matched=0 unmatched=0`: nothing already decided is
+re-asked, and the manual row survived it.
+
+### The one decline, and why it is evidence the threshold is RIGHT
+
+`The Legend of Aang - The Last Airbender` was declined with:
+
+> no candidate title matches "The Legend of Aang - The Last Airbender"
+> (1 returned, best was "Avatar Aang: The Last Airbender")
+
+Resolved by hand to tmdb 980431 / imdb tt18259538. **The decline was correct on
+the evidence the matcher had.** TMDB's primary title for 980431 is
+"Avatar Aang: The Last Airbender"; its US *alternative* title is
+"The Legend of Aang: The Last Airbender" — our filename exactly, differing only
+by `:` against ` - `, which the normaliser already folds. The matcher never saw
+it, because a search response carries the primary title only.
+
+So the gap is **missing input, not an over-tight threshold**, and the fix is
+not to loosen matching. If this recurs, the evidence-backed change is to ask
+the provider for alternative titles and match against those too — a strictly
+larger set of *exact* comparisons, which is a different thing from a fuzzier
+comparison.
+
+**What loosening would have cost, concretely.** A search for "Aang" returns
+`The Last Airbender (2010)` — the live-action film — in the same result set. A
+substring or article-stripping matcher has a real path to that answer, and
+would have attached this file's imported watch history to a different film with
+no visible symptom.
+
+**Hand-resolved list, which is the evidence base going forward: one film, and
+it was a renamed release.** That is the number to watch. One in six on a
+deliberately awkward library is a threshold doing its job; a majority needing
+hand resolution would be a threshold set wrong.
+
+### The pattern: a test that never reaches the line it guards
+
+**Four instances now, and it is the dominant failure mode in this project's
+tests.** Stated here as a pattern rather than a fourth incident.
+
+**The shape.** A test asserts an outcome that is reachable by more than one
+path. The path it was written to guard is one of them. Some other path — a
+default, an earlier filter, an empty fixture, a coincidence of types — reaches
+the same outcome without touching the guarded code. The assertion is true
+either way, so the test passes whether or not the thing it was written for
+works at all.
+
+**The four:**
+
+| Instance | Asserted | Reached by |
+|---|---|---|
+| `displayChannelLayout` | the helper normalises `5.1(side)` | the helper directly; nothing checked the DTO called it |
+| `TestVidHubStreamRequest` | a 206 on a lowercase stream URL | the bare `/stream` route, the extension having landed in the query string |
+| `TestManualIdentitySurvivesAPass` | a manual identity survives a pass | the `Pending` query never returning it; the guarded write was never called |
+| `TestItemDetailEmitsIdentity` (this session, caught pre-merge) | `ProviderIds` is correct | every seeded item having no identity, so `{}` was right either way |
+
+**How to spot it in advance.** Ask of every assertion: *what else could make
+this pass?* Three questions catch all four:
+
+1. **Is the expected value also the zero value, the default, or the empty
+   case?** `{}`, `false`, `0`, `nil`, an empty list. If the fixture never
+   supplies a non-default value, the assertion cannot distinguish a working
+   implementation from an absent one. `IsDefault` was unreachable this way for
+   an entire milestone, because `false` and `true` are the same JSON type.
+2. **Does the test set up the state that forces execution through the guarded
+   line?** A guard on a manual row needs a manual row *and* a call that hits
+   the guard. Skipping the item and being refused by the guard produce
+   identical observable outcomes.
+3. **Am I testing a helper, or testing that something calls it?** These are
+   different tests and the second is the one that regresses.
+
+**The counter-measure is unchanged and is the only reliable one: inject the
+fault and watch the test fail.** All four were found that way and none by
+reading. Two riders learned this session:
+
+- **Inject each half separately.** Removing the manual guard failed nothing;
+  removing only the `RowsAffected` check that followed it failed exactly one
+  assertion. Injecting both at once would have hidden which half was load
+  bearing.
+- **Confirm the injection actually landed.** One injection here reported a pass
+  because the `sed` had not matched anything. *A fault injection that fails to
+  apply is indistinguishable from a test that catches nothing.* Print the
+  patched line, or assert the build broke, before believing a green result.
+
+**Verified:**
+- `gofmt`, `go vet ./...` clean. Full suite green with a database and without.
+- Live pass against real TMDB, results in the table above; second pass a no-op.
+- Two new compat tests, both halves of the DTO wiring injected separately and
+  each caught. The control test — an unidentified item emitting `{}` and `[]` —
+  is kept deliberately and is documented as unable to discriminate on its own.
+
+**In flight:**
+- Nothing.
+
+**Blocked:**
+- Nothing.
+
+**Decisions made:**
+- **The matcher was NOT widened**, per the standing instruction, and the
+  investigation supports the instruction rather than merely obeying it: the
+  decline was right on the input available.
+- **`docker-compose.yml` uses `${REELIX_TMDB_API_KEY:?...}`**, matching
+  `REELIX_DB_PASSWORD`. Without it the container starts, fails config
+  validation, and restarts forever — the loud failure is only loud if it
+  happens where somebody is looking.
+- **The identify pass was driven through the service layer, not the HTTP
+  route.** `POST /libraries/{id}/identify` needs the administrator password,
+  which this session does not have. The route is covered by the API tests but
+  **has not been driven live** — the one gap in this session's verification.
+
+**Next step:**
+- Drive `POST /api/v1/libraries/{id}/identify` live with the admin password, to
+  close the one unverified path:
+  `curl -X POST -H "Authorization: Bearer $TOKEN" http://100.95.0.122:8080/api/v1/libraries/01a03fa4-09ab-76e1-a134-5068f65d4074/identify`
+- Confirm on the SK1 that nothing regressed now that items carry `ProviderIds`.
+  Wholphin reads it in one place, for external links it then omits, so the
+  expected result is no visible change — which is worth confirming precisely
+  because it should be invisible.
+- Then 0.0.2 item 3 proper: the fields that hang off an identity — titles,
+  overviews, ratings, artwork — starting with the artwork decision the two
+  fixed landmines were clearing the way for.
+
+---
+
 ## 2026-08-28 — 0.0.2 item 3 begins: identity, and a bug the injection found
 
 **Completed:**
