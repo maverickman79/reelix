@@ -833,6 +833,86 @@ func TestItemImagesAre404(t *testing.T) {
 	})
 }
 
+// TestItemImageDoesNotRequireAToken pins the artwork exception.
+//
+// This is the fault that motivated it: a browse grid requested six posters
+// with a token and got six 404s, and five seconds later the playback screen
+// requested one without a token and got a 401. A 401 is a retry where a 404
+// is final, so once artwork exists that disagreement is a loop rather than a
+// placeholder.
+//
+// The reference was probed unauthenticated and answers 400 for a malformed id
+// and 404 for an absent image, never 401, while /Items/{id} beside it answers
+// 401. So this matches the reference rather than relaxing it.
+func TestItemImageDoesNotRequireAToken(t *testing.T) {
+	h := newHarness(t)
+	seeded := seedMedia(t, h)
+	id := compatID(seeded.byTitle["Idiocracy"].ID)
+
+	for _, path := range []string{
+		"/Items/" + id + "/Images/Primary",
+		"/Items/" + id + "/Images/primary",
+		"/Items/" + id + "/Images/Primary/0",
+	} {
+		t.Run(path, func(t *testing.T) {
+			resp := h.do(http.MethodGet, path, "", nil)
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusNotFound {
+				t.Errorf("without a token: %d, want 404", resp.StatusCode)
+			}
+		})
+	}
+
+	// The control. If this ever answers anything but 401, the change above
+	// leaked past the two routes it was meant for.
+	t.Run("the item itself still requires a token", func(t *testing.T) {
+		resp := h.do(http.MethodGet, "/Items/"+id, "", nil)
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("status %d, want 401", resp.StatusCode)
+		}
+	})
+}
+
+// TestItemImageTypeFoldsCase pins the other half of the artwork fix.
+//
+// The type is a route parameter, so routefold.go leaves its casing alone by
+// design. A client that lowercases its paths therefore delivers "primary"
+// here. While nothing has artwork both spellings 404 either way, so the
+// assertion that carries the meaning is the canonical NAME in the body: it is
+// what shows the two spellings arrived at one type rather than two.
+func TestItemImageTypeFoldsCase(t *testing.T) {
+	h := newHarness(t)
+	seeded := seedMedia(t, h)
+	id := compatID(seeded.byTitle["Idiocracy"].ID)
+
+	for _, spelling := range []string{"Primary", "primary", "PRIMARY", "pRiMaRy"} {
+		t.Run(spelling, func(t *testing.T) {
+			resp := h.do(http.MethodGet, "/Items/"+id+"/Images/"+spelling, "", nil)
+			raw := h.bodyOf(resp)
+			if resp.StatusCode != http.StatusNotFound {
+				t.Fatalf("status %d, want 404: %s", resp.StatusCode, raw)
+			}
+			if !strings.Contains(string(raw), "Primary") {
+				t.Errorf("body does not name the canonical type: %s", raw)
+			}
+		})
+	}
+
+	// An unknown type is echoed as sent and still 404s. The reference answers
+	// 400 here; see handleItemImage for why that is recorded not reproduced.
+	t.Run("an unknown type is not invented into a real one", func(t *testing.T) {
+		resp := h.do(http.MethodGet, "/Items/"+id+"/Images/Poster", "", nil)
+		raw := h.bodyOf(resp)
+		if resp.StatusCode != http.StatusNotFound {
+			t.Fatalf("status %d, want 404: %s", resp.StatusCode, raw)
+		}
+		if !strings.Contains(string(raw), "Poster") {
+			t.Errorf("body does not name the type as sent: %s", raw)
+		}
+	})
+}
+
 // TestBrowseRoutesRequireAToken checks the new surface is authenticated.
 func TestBrowseRoutesRequireAToken(t *testing.T) {
 	h := newHarness(t)
@@ -847,7 +927,6 @@ func TestBrowseRoutesRequireAToken(t *testing.T) {
 		"/Items/" + id + "/Intros",
 		"/Items/" + id + "/SpecialFeatures",
 		"/Items/" + id + "/ThemeSongs",
-		"/Items/" + id + "/Images/Primary",
 		"/MediaSegments/" + id,
 	} {
 		t.Run(path, func(t *testing.T) {

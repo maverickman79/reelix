@@ -75,8 +75,10 @@ func TestFoldLeavesParametersAlone(t *testing.T) {
 			want: "/Items/AbCdEf/Intros",
 		},
 		{
-			// The image type is a parameter, so it is NOT folded. Recorded
-			// deliberately: it is a latent gap that bites when artwork lands.
+			// The image type is a parameter, so it is NOT folded. That is
+			// correct here and stays correct: folding a parameter would
+			// corrupt item ids. The type is canonicalised in the handler
+			// instead — see canonicalImageType and TestItemImageTypeFoldsCase.
 			name: "image type is a parameter and keeps its casing",
 			in:   "/items/abc/images/primary",
 			want: "/Items/abc/Images/primary",

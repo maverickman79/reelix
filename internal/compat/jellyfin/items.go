@@ -187,16 +187,30 @@ func (a *API) handleLatestItems(w http.ResponseWriter, r *http.Request) {
 
 // handleItemImage serves GET /Items/{id}/Images/{type}.
 //
-// 404, always. Reelix downloads no artwork in 0.0.1, so no item has an image
-// of any type — and this is the reference server's own answer in exactly that
-// situation: the recorded Chapter request came back 404 with this body.
+// 404, always. Reelix downloads no artwork yet, so no item has an image of any
+// type — and this is the reference server's own answer in exactly that
+// situation: the recorded Chapter request came back 404 with this body, and a
+// live probe with a well-formed but nonexistent id answers 404 too.
 //
 // The items Reelix serves advertise no image tags, so a client should not ask
 // at all; a client that asks anyway gets the truth and renders its placeholder.
+//
+// The type is canonicalised rather than echoed, so that "primary" and
+// "Primary" are one type here and not two. See canonicalImageType: the route
+// parameter is not touched by the fold trie, so this is the only place the
+// spelling can be settled.
+//
+// An unknown type still answers 404. The reference answers 400 with an ASP.NET
+// validation envelope naming the bad value; reproducing that would mean
+// inventing a body shape — including a traceId — for a request no observed
+// client makes. Recorded rather than reproduced.
 func (a *API) handleItemImage(w http.ResponseWriter, r *http.Request) {
 	kind := r.PathValue("type")
 	if kind == "" {
 		kind = "Primary"
+	}
+	if canonical, ok := canonicalImageType(kind); ok {
+		kind = canonical
 	}
 	a.writeJSON(w, r, http.StatusNotFound, "item does not have an image of type "+kind)
 }

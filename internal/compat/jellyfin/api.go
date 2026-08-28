@@ -126,14 +126,29 @@ func (a *API) registerCompatRoutes(mux *routeTable) {
 	// No artwork exists yet. Both spellings of the route are registered
 	// because clients build image URLs with and without an index.
 	//
-	// {type} is a PARAMETER, so case folding does not touch it: a request for
-	// .../Images/primary reaches the handler as "primary", not "Primary". That
-	// is harmless while this route 404s everything. WHOEVER IMPLEMENTS ARTWORK
-	// must compare the type case-insensitively, or split this into literal
-	// alternatives — otherwise a client that lowercases its paths gets a 404
-	// for an image that exists.
-	mux.handle("GET /Items/{id}/Images/{type}", a.requireAuth(a.handleItemImage))
-	mux.handle("GET /Items/{id}/Images/{type}/{index}", a.requireAuth(a.handleItemImage))
+	// UNAUTHENTICATED, deliberately, and this is the second exception on the
+	// compatibility surface after the stream endpoint. Wholphin requests
+	// posters from a component that carries no credential — observed live, a
+	// browse grid answering 404 six times with a token and the playback screen
+	// answering 401 five seconds later without one. A 401 is a retry; a 404 is
+	// final, so the credentialled and uncredentialled answers disagreeing is
+	// what turns a missing poster into a loop once artwork exists.
+	//
+	// This MATCHES the reference rather than relaxing something it enforces:
+	// probed unauthenticated, /Items/{id}/Images/{type} answers 400 for a
+	// malformed id and 404 for an absent image, never 401, while /Items/{id}
+	// alongside it answers 401. Artwork is public on a real Jellyfin.
+	//
+	// It is not the stream endpoint's capability model and must not be
+	// confused with it: there is no tag here because there is nothing yet to
+	// protect. WHOEVER IMPLEMENTS ARTWORK decides then whether a poster is
+	// public, and has this note saying the answer was "public, like the
+	// reference" for as long as the answer cost nothing.
+	//
+	// {type} is a PARAMETER, so the fold trie does not touch it. It is
+	// canonicalised in the handler instead — see canonicalImageType.
+	mux.handle("GET /Items/{id}/Images/{type}", a.handleItemImage)
+	mux.handle("GET /Items/{id}/Images/{type}/{index}", a.handleItemImage)
 
 	// Playback. The stream endpoint authenticates itself: the client fetches
 	// it from a media player that sends no credentials, so it accepts a
