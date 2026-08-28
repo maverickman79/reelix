@@ -21,6 +21,154 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-28 — 0.0.2 item 3 begins: identity, and a bug the injection found
+
+**Completed:**
+- The two artwork landmines, resolved ahead of scraping. Live-verified.
+- **Metadata scraping, identity slice.** Provider interface, matcher, TMDB
+  client, schema, the identify pass, native API, and `ProviderIds` on the
+  compatibility surface. Fields hang off this later; none are fetched yet.
+
+**The two landmines, both grounded in probes rather than inference:**
+
+| Request, no credential | Reference | Reelix before | Reelix now |
+|---|---|---|---|
+| `/Items/{id}/Images/{type}` | 400 / 404, never 401 | **401** | 404 |
+| `.../Images/primary` vs `/Primary` | one type | two | one |
+| `/Items/{id}` (control) | 401 | 401 | 401 |
+
+The 401 was reproduced in the SK1 session log: a browse grid answered 404 six
+times *with* a token, and five seconds later the playback screen answered 401
+*without* one. Artwork is public on a real Jellyfin, so both fixes **match**
+the reference rather than relaxing something it enforces. The image routes are
+now the second deliberately unauthenticated exception after the stream
+endpoint, and they are **not** its capability model — there is nothing to
+protect yet, and whoever adds artwork decides then.
+
+The thirteen valid image types were enumerated by probing: an unknown type
+answers 400 with a validation body naming it, a known one falls through to the
+id and answers 404. `Poster`, `Cover` and `Fanart` are the controls, all three
+rejected.
+
+### The identity model, and why it is shaped this way
+
+**Three states, not a nullable id.** `pending` / `matched` / `unmatched` /
+`manual`. "No TMDB id" would otherwise mean both "never attempted" and
+"attempted and found nothing", and the importer has to retry the first and
+leave the second alone.
+
+**The matcher declines rather than guesses.** Exact normalised title equality
+plus a unique candidate at the best tier (exact year, within one, or title
+alone). An ambiguous tier ends the decision instead of falling through to a
+weaker one, because a weaker tier cannot resolve an ambiguity a stronger one
+could not — it can only produce a single answer the stronger evidence says is
+wrong. Provider ranking never breaks a tie.
+
+**The year is not sent to TMDB as a filter**, though it would return a shorter
+list. Filtering server-side hides both a legitimate off-by-one release year
+and a second candidate sharing the title — and hiding the evidence of
+ambiguity manufactures a confident answer out of a situation that did not
+deserve one.
+
+**`ProviderIds` spellings were probed, and nothing we hold pinned them.** Every
+fixture carries `{}` because the captured library had no metadata. A film
+identified on a live 10.11.8 sends **three different spellings of two
+providers in one response**: the key is `Tmdb`/`Imdb`, the `ExternalUrls`
+display name is `TMDB`/`IMDb`, and Reelix stores `tmdb`/`imdb`. Values are
+JSON strings even when numeric, which is why `external_id` is a text column.
+
+### The bug, and the gap that hid it
+
+`RecordMatch` guards its UPDATE with `status <> 'manual'` but wrote the
+external ids **unconditionally**. A pass racing a human correction therefore
+left an item marked `manual` while carrying the pass's TMDB id — the status
+saying a person decided and the ids saying otherwise. `FindByExternalID`
+believes the ids, so an imported watch history would resolve onto the wrong
+film: **the exact failure the manual state exists to prevent.**
+
+**The test that was supposed to cover this could not reach it.**
+`TestManualIdentitySurvivesAPass` proves the pass *skips* manual items, which
+it does — via the `Pending` query, which never returns them. So the write
+itself was never exercised, and **removing the guard entirely left the whole
+suite green.** Only the fault injection revealed that, and the fix needed a
+new test reproducing the race by calling the repository in the order the race
+produces.
+
+This is the third time the same shape has appeared, and it is worth naming:
+`displayChannelLayout` tested the helper and not its caller, `TestVidHubStream`
+asserted 206 on a request exercising nothing, and this asserted the path that
+avoids the code rather than the code. **A test that passes because it never
+reaches the guarded line is indistinguishable from one that passes because the
+guard works.** Only injection separates them.
+
+**Verified:**
+- `gofmt`, `go vet ./...` clean. Full suite green with a database and without.
+- **Fault-injected twelve times across five packages**, each caught by its own
+  test — except the manual-overwrite injection, which was caught by nothing
+  and is what found the bug above.
+- Discriminating injections, which are the ones that show a test measures the
+  behaviour rather than merely failing: dropping the credential redaction fails
+  only the leak test; dropping the canonicalisation fails `primary`/`PRIMARY`
+  while `Primary` stays green; removing the `RowsAffected` check fails only the
+  ids assertion while the status assertion still passes.
+- Artwork fixes live through the rebuilt container: all spellings fold to
+  `Primary`, unauthenticated is 404, an unknown type echoes as sent, and
+  `/Items/{id}` still 401s.
+- Startup without `REELIX_TMDB_API_KEY` exits 1 naming the variable, before
+  touching the database.
+
+**In flight:**
+- Nothing.
+
+**Blocked — and this one needs an action before the next restart:**
+- **`REELIX_TMDB_API_KEY` is required and `.env` has it empty.** The running
+  container is still on the previous binary, so it is unaffected, but **the
+  next rebuild will refuse to start until a key is filled in.** That is the
+  requested behaviour, not a fault. Nothing has run against the real TMDB yet:
+  no live pass, and no confirmation that the six-film library identifies.
+
+**Decisions made:**
+- **The key is required to boot, and the consequence is deliberate.** An
+  instance that only browses and plays local files now needs a TMDB key to
+  start. That is the cost of finding out at startup rather than on the first
+  item of a pass, which is what the ffprobe precedent asks for.
+- **Reachability is NOT a startup condition**, and the asymmetry with ffprobe
+  is the point. ffprobe is a local binary, so its absence is permanent and
+  knowable. Refusing to start a media server because a metadata API is
+  unreachable would turn someone else's outage into ours.
+- **Identification is its own pass.** Migration 9 widens the job kind and
+  changes the active-job index to one job *per kind* per library. Forbidding
+  two concurrent scans stays right; also forbidding an identify pass during a
+  scan was an accident of the old index.
+- **Nothing from the provider is stored except ids.** The search response
+  carries a title and a year and they are used for scoring only. Writing the
+  provider's title over the parsed one is field fetching, which is the next
+  slice.
+- **`ExternalIDs` is on `ItemDetail` and deliberately not on `Browse`.** The
+  list DTO has no `ProviderIds` field, so loading them per listing would have
+  run a query per page to render nothing. Built, then cut.
+- **Hand-written accent table, no `x/text`**, the same call as `tracklabel.go`'s
+  ISO 639 table. Articles are deliberately NOT stripped: "The Thing" and
+  "Thing" are different films.
+
+**Next step:**
+- Put a TMDB key in `.env`, rebuild, and run one live pass over the six-film
+  library. The expected result is the interesting part: `Congo`, `Fight Club`
+  and `Idiocracy` should match exactly, and `The Legend of Aang - The Last
+  Airbender` is expected to be left **unmatched**, because the file is a
+  renamed release and the matcher will not guess. The reference instance
+  identified `Gangland` as tmdb 1147610 / imdb tt28263483, so that one is a
+  usable cross-check: if Reelix declines it, the matcher is stricter than the
+  reference rather than wrong.
+- Then decide whether the unmatched ones are resolved by hand or whether the
+  parser needs to feed the matcher a better title. **Resist widening the
+  matcher to fix them** — that is the change that turns visible gaps into
+  silent wrong answers.
+- Also still open, unchanged: the `/socket` decision, and the "Recently Added"
+  observation from the previous entry.
+
+---
+
 ## 2026-08-28 — the deferred hardware batch closes, and 0.0.2 gets a scope doc
 
 **Completed:**
