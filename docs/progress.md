@@ -132,6 +132,14 @@ Today: `primary 5`, `alternative 1`.
 - Call counts are asserted by unit test rather than counted over the wire: zero
   alternative-title lookups for a film matching on its primary, exactly one for
   the rescue, none for an ambiguous decline.
+- **`POST /libraries/{id}/identify` driven live by a real caller** (run
+  separately, alongside this work), which closes the last unverified path in
+  the identity slice. `DELETE /items/{id}/identity` returned Congo to pending;
+  the POST answered **202** with a job id; the job completed at progress
+  **1/1**, which is the part worth recording — it confirms the pass scopes
+  itself to pending items rather than re-walking the library; and the GET
+  returned `matched` / `exact` / tmdb 10329 / imdb tt0112715. Every layer of
+  the identity slice has now been exercised by the path a real caller uses.
 
 **In flight:**
 - Nothing.
@@ -157,8 +165,6 @@ Today: `primary 5`, `alternative 1`.
   release the operator actually has.
 
 **Next step:**
-- The identify curl sequence, to close `POST /libraries/{id}/identify` — the
-  one path still never driven by a real caller.
 - Confirm on the SK1 that nothing regressed now items carry `ProviderIds`.
   Wholphin reads it in one place, for external links it then omits, so the
   expected result is **no visible change** — worth confirming precisely because
@@ -301,8 +307,9 @@ reading. Two riders learned this session:
   happens where somebody is looking.
 - **The identify pass was driven through the service layer, not the HTTP
   route.** `POST /libraries/{id}/identify` needs the administrator password,
-  which this session does not have. The route is covered by the API tests but
-  **has not been driven live** — the one gap in this session's verification.
+  which that session did not have. **CLOSED the same day** — the route was
+  driven live by a real caller and answered 202 with a job that completed at
+  progress 1/1; see the entry above.
 
 **Next step:**
 - Drive `POST /api/v1/libraries/{id}/identify` live with the admin password, to
