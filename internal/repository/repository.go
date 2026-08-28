@@ -70,3 +70,10 @@ func newID() uuid.UUID { return uuid.NewV7() }
 // interesting; truncating to microseconds matches PostgreSQL's own resolution,
 // so a value read back equals the value written.
 func now() time.Time { return time.Now().UTC().Truncate(time.Microsecond) }
+
+// isNoRows reports whether a query matched nothing.
+//
+// Some callers treat an absent row as a state rather than a failure — an item
+// with no metadata has simply never been fetched — and they need to ask
+// without first mapping the error into ErrNotFound and back.
+func isNoRows(err error) bool { return errors.Is(err, pgx.ErrNoRows) }

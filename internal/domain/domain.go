@@ -149,6 +149,74 @@ type Identity struct {
 	UpdatedAt time.Time
 }
 
+// Metadata field names, as the repository, the API and the provenance table
+// all spell them. Declared once so a typo is a compile error rather than a row
+// nobody reads.
+const (
+	FieldOverview        = "overview"
+	FieldCommunityRating = "community_rating"
+	FieldOfficialRating  = "official_rating"
+	FieldPremiereDate    = "premiere_date"
+	FieldGenres          = "genres"
+)
+
+// MetadataSourceManual marks a value a person supplied.
+const MetadataSourceManual = "manual"
+
+// managedFields is every field the metadata layer manages, so that an unknown
+// field name is refused at the edge rather than written into a provenance row
+// nothing ever reads.
+var managedFields = map[string]bool{
+	FieldOverview:        true,
+	FieldCommunityRating: true,
+	FieldOfficialRating:  true,
+	FieldPremiereDate:    true,
+	FieldGenres:          true,
+}
+
+// IsManagedField reports whether a field name is one the metadata layer knows.
+func IsManagedField(field string) bool { return managedFields[field] }
+
+// FieldProvenance is where one field's value came from and whether a person
+// has pinned it.
+type FieldProvenance struct {
+	Field  string
+	Source string
+	// Locked stops a refresh overwriting the value. Set by default when a
+	// person edits a field; see MetadataService.Set.
+	Locked    bool
+	UpdatedAt time.Time
+}
+
+// ItemMetadata is one item's managed fields and their provenance.
+//
+// Every value is optional and nil means the field has no value, which is not
+// the same as an empty one: a film with no overview and a film whose overview
+// is the empty string are different claims, and only the first is honest about
+// not knowing.
+//
+// There is no runtime here. RunTimeTicks must describe the file, which ffprobe
+// measured; see the TMDB provider's FetchMetadata for why a provider runtime
+// is deliberately not collected.
+type ItemMetadata struct {
+	MediaItemID uuid.UUID
+
+	Overview        *string
+	CommunityRating *float64
+	OfficialRating  *string
+	PremiereDate    *time.Time
+	Genres          []string
+
+	// Provenance is keyed by field name. A field with no entry has never been
+	// written by anything.
+	Provenance map[string]FieldProvenance
+}
+
+// Locked reports whether a field is pinned against refresh.
+func (m ItemMetadata) Locked(field string) bool {
+	return m.Provenance[field].Locked
+}
+
 // ServerSettings is the server's own identity.
 //
 // ServerID is 32 lowercase hex characters. Clients cache it and treat a change
@@ -216,6 +284,11 @@ const (
 	// library's items are. Remote, which is exactly why it is not a step
 	// inside a scan — a scan must not fail because someone else's API is down.
 	JobKindLibraryIdentify JobKind = "library_identify"
+	// JobKindLibraryMetadata fetches the managed fields for identified items.
+	// Separate from identify because the two fail independently: a film can be
+	// correctly identified and have stale fields, and refetching fields must
+	// not re-run identification.
+	JobKindLibraryMetadata JobKind = "library_metadata"
 )
 
 // JobState is where a job is in its lifecycle.
