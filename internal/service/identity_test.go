@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 	"uuid"
@@ -44,6 +45,14 @@ type fakeProvider struct {
 	// metaCalls counts metadata fetches, which is how the default-versus-all
 	// refresh scope is checked.
 	metaCalls int
+
+	// images are canned image bodies keyed by URL, and imageCalls counts the
+	// downloads. The count is the assertion behind "re-running the pass
+	// downloads nothing".
+	images           map[string]string
+	imageContentType string
+	imageErr         error
+	imageCalls       int
 }
 
 func (f *fakeProvider) Name() string { return "tmdb" }
@@ -54,6 +63,25 @@ func (f *fakeProvider) SearchMovie(context.Context, metadata.MovieQuery) ([]meta
 		return nil, f.searchErr
 	}
 	return f.candidates, nil
+}
+
+// FetchImage serves canned bytes per URL, so the artwork path can be exercised
+// without an HTTP server. A URL with no entry fails, which is what the
+// download-failure tests want.
+func (f *fakeProvider) FetchImage(_ context.Context, imageURL string) (io.ReadCloser, string, error) {
+	f.imageCalls++
+	if f.imageErr != nil {
+		return nil, "", f.imageErr
+	}
+	body, ok := f.images[imageURL]
+	if !ok {
+		return nil, "", errors.New("no image at " + imageURL)
+	}
+	contentType := f.imageContentType
+	if contentType == "" {
+		contentType = "image/jpeg"
+	}
+	return io.NopCloser(strings.NewReader(body)), contentType, nil
 }
 
 func (f *fakeProvider) ExternalIDs(context.Context, string) (map[string]string, error) {

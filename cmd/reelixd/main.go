@@ -119,11 +119,11 @@ func run() error {
 	// to a credential; reachability deliberately is not a startup condition,
 	// because TMDB being down is not a reason a media server cannot serve
 	// local files. See the note on config.Metadata.
-	provider := tmdb.New(cfg.Metadata.TMDBBaseURL, cfg.Metadata.TMDBAPIKey,
-		cfg.Metadata.Region, cfg.Metadata.RequestTimeout)
+	provider := tmdb.New(cfg.Metadata.TMDBBaseURL, cfg.Metadata.TMDBImageBaseURL, cfg.Metadata.TMDBAPIKey,
+		cfg.Metadata.Region, cfg.Metadata.RequestTimeout, cfg.Metadata.ImageTimeout)
 
 	identity := service.NewIdentityService(pool, provider, log)
-	metadataSvc := service.NewMetadataService(pool, provider, log)
+	metadataSvc := service.NewMetadataService(pool, provider, cfg.Paths.CacheDir, log)
 
 	nativeAPI := v1.New(
 		service.NewAuthService(pool),
@@ -133,7 +133,7 @@ func run() error {
 		metadataSvc,
 	)
 
-	compatAPI := jellyfin.New(sessions, media, playback, log)
+	compatAPI := jellyfin.New(sessions, media, playback, metadataSvc, log)
 
 	srv := server.New(cfg.HTTP, log, version, nativeAPI, compatAPI)
 	if err := srv.Run(ctx); err != nil {

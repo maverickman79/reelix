@@ -18,6 +18,10 @@ import (
 type metadataFixture struct {
 	*identifyFixture
 	metadata *service.MetadataService
+
+	// cacheDir roots the artwork store, so a test can wipe it the way losing a
+	// cache volume does.
+	cacheDir string
 }
 
 func newMetadataFixture(t *testing.T, provider *fakeProvider) *metadataFixture {
@@ -33,9 +37,11 @@ func newMetadataFixture(t *testing.T, provider *fakeProvider) *metadataFixture {
 	f.runIdentify(t)
 
 	discard := slog.New(slog.NewTextHandler(io.Discard, nil))
+	cacheDir := t.TempDir()
 	return &metadataFixture{
 		identifyFixture: f,
-		metadata:        service.NewMetadataService(f.pool, provider, discard),
+		metadata:        service.NewMetadataService(f.pool, provider, cacheDir, discard),
+		cacheDir:        cacheDir,
 	}
 }
 

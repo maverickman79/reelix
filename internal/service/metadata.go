@@ -11,6 +11,7 @@ import (
 
 	"github.com/maverickman79/reelix/internal/domain"
 	"github.com/maverickman79/reelix/internal/logging"
+	"github.com/maverickman79/reelix/internal/media/artwork"
 	"github.com/maverickman79/reelix/internal/metadata"
 	"github.com/maverickman79/reelix/internal/repository"
 )
@@ -22,16 +23,32 @@ const metadataBatch = 200
 type MetadataService struct {
 	pool     *pgxpool.Pool
 	provider metadata.Provider
+	images   *artwork.Store
 	log      *slog.Logger
 }
 
-// NewMetadataService returns a service backed by pool and provider.
-func NewMetadataService(pool *pgxpool.Pool, provider metadata.Provider, log *slog.Logger) *MetadataService {
+// NewMetadataService returns a service backed by pool, provider and an artwork
+// store rooted at cacheDir.
+func NewMetadataService(
+	pool *pgxpool.Pool, provider metadata.Provider, cacheDir string, log *slog.Logger,
+) *MetadataService {
 	return &MetadataService{
 		pool:     pool,
 		provider: provider,
+		images:   artwork.NewStore(cacheDir),
 		log:      logging.Component(log, "metadata"),
 	}
+}
+
+// Images returns the artwork store, so the compatibility layer can serve the
+// bytes a row points at.
+func (s *MetadataService) Images() *artwork.Store { return s.images }
+
+// GetImage returns one item's stored image, for the serving path.
+func (s *MetadataService) GetImage(
+	ctx context.Context, itemID uuid.UUID, imageType string,
+) (domain.ItemImage, error) {
+	return repository.NewMetadataRepository(s.pool).GetImage(ctx, itemID, imageType)
 }
 
 // Get returns one item's metadata and provenance.
@@ -68,6 +85,19 @@ func (s *MetadataService) Set(ctx context.Context, itemID uuid.UUID, edits []Edi
 	}
 	if _, err := repository.NewMediaRepository(s.pool).GetItem(ctx, itemID); err != nil {
 		return err
+	}
+
+	// An image is lockable but not hand-settable in 0.0.2: choosing one means
+	// supplying a URL or bytes, which is the image selection UI this milestone
+	// excludes. Refused here by name rather than left to fail on a missing
+	// column, because an error by coincidence reads like a bug to whoever
+	// meets it — and it would stop being an error the day somebody added the
+	// column.
+	for _, e := range edits {
+		if domain.IsImageField(e.Field) {
+			return InvalidArgumentf(
+				"%s cannot be set by hand; it can only be locked or unlocked", e.Field)
+		}
 	}
 
 	repo := repository.NewMetadataRepository(s.pool)
@@ -139,7 +169,7 @@ func (s *MetadataService) run(ctx context.Context, jobID, libraryID uuid.UUID, a
 		return
 	}
 
-	fetched, skipped, err := s.refresh(ctx, jobID, libraryID, all, log)
+	result, err := s.refresh(ctx, jobID, libraryID, all, log)
 	if err != nil {
 		log.Error("metadata refresh failed",
 			slog.String(logging.KeyOperation, "refresh_metadata"),
@@ -152,31 +182,62 @@ func (s *MetadataService) run(ctx context.Context, jobID, libraryID uuid.UUID, a
 
 	log.Info("metadata refresh complete",
 		slog.String(logging.KeyOperation, "refresh_metadata"),
-		slog.Int("fetched", fetched),
-		slog.Int("fields_skipped_locked", skipped))
+		slog.Int("fetched", result.fetched),
+		slog.Int("images_downloaded", result.imagesDownloaded),
+		slog.Int("images_cleared", result.imagesCleared),
+		slog.Int("fields_skipped_locked", result.skippedLocked))
 
 	if err := jobs.Finish(ctx, jobID, domain.JobStateCompleted, ""); err != nil {
 		log.Error("could not record completion", slog.Any(logging.KeyError, err))
 	}
 }
 
+// refreshResult counts what one pass did.
+type refreshResult struct {
+	fetched          int
+	skippedLocked    int
+	imagesDownloaded int
+	imagesCleared    int
+}
+
 // refresh walks the library's identified items and stores what the provider
 // knows about each.
 func (s *MetadataService) refresh(
 	ctx context.Context, jobID, libraryID uuid.UUID, all bool, log *slog.Logger,
-) (fetched, skippedLocked int, err error) {
+) (refreshResult, error) {
+	var result refreshResult
+
 	repo := repository.NewMetadataRepository(s.pool)
 	identities := repository.NewIdentityRepository(s.pool)
 	jobs := repository.NewJobRepository(s.pool)
 
+	// Partial downloads first. Save removes its own temporary file on every
+	// failure path, so this only ever catches the one case that cannot — the
+	// process dying mid-download — which would otherwise leave a file per
+	// interrupted pass forever, each with a random suffix and so never
+	// overwritten.
+	if swept, err := s.images.Sweep(); err != nil {
+		log.Warn("could not sweep partial image downloads", slog.Any(logging.KeyError, err))
+	} else if swept > 0 {
+		log.Info("swept partial image downloads", slog.Int("removed", swept))
+	}
+
+	// Then rows whose file has gone, so the selection below sees them as items
+	// with no image rather than as items already done. See reconcile.
+	cleared, err := s.reconcile(ctx, libraryID, log)
+	if err != nil {
+		return result, err
+	}
+	result.imagesCleared = cleared
+
 	items, err := repo.ItemsNeedingMetadata(ctx, libraryID, !all, metadataBatch)
 	if err != nil {
-		return 0, 0, err
+		return result, err
 	}
 
 	for i, item := range items {
 		if err := ctx.Err(); err != nil {
-			return fetched, skippedLocked, err
+			return result, err
 		}
 		if i > 0 {
 			time.Sleep(providerPause)
@@ -187,7 +248,7 @@ func (s *MetadataService) refresh(
 
 		identity, err := identities.Get(ctx, item.ID)
 		if err != nil {
-			return fetched, skippedLocked, err
+			return result, err
 		}
 		providerID := identity.ExternalIDs[s.provider.Name()]
 		if providerID == "" {
@@ -200,7 +261,7 @@ func (s *MetadataService) refresh(
 		md, err := s.provider.FetchMetadata(ctx, providerID)
 		switch {
 		case errors.Is(err, metadata.ErrRateLimited):
-			return fetched, skippedLocked, err
+			return result, err
 		case err != nil:
 			// One film we could not fetch is not a reason to abandon the pass,
 			// the same as one unprobeable file during a scan.
@@ -212,17 +273,30 @@ func (s *MetadataService) refresh(
 
 		skipped, err := s.store(ctx, repo, item.ID, md)
 		if err != nil {
-			return fetched, skippedLocked, err
+			return result, err
 		}
-		fetched++
-		skippedLocked += skipped
+		result.fetched++
+		result.skippedLocked += skipped
+
+		// Artwork rides the SAME provider response as the fields, so a
+		// library-wide refresh sends TMDB no more requests than it did before
+		// artwork existed. Only the image bytes are extra, and they come from
+		// a CDN rather than the API.
+		downloaded, imagesSkipped, err := s.storeImages(
+			ctx, repo, item.ID, md, all, log.With(slog.String("item", item.Title)))
+		if err != nil {
+			return result, err
+		}
+		result.imagesDownloaded += downloaded
+		result.skippedLocked += imagesSkipped
 
 		log.Info("metadata fetched",
 			slog.String("item", item.Title),
-			slog.Int("fields_skipped_locked", skipped))
+			slog.Int("images_downloaded", downloaded),
+			slog.Int("fields_skipped_locked", skipped+imagesSkipped))
 	}
 
-	return fetched, skippedLocked, nil
+	return result, nil
 }
 
 // store writes each field the provider supplied, counting those the lock
