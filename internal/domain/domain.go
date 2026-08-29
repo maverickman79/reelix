@@ -158,7 +158,46 @@ const (
 	FieldOfficialRating  = "official_rating"
 	FieldPremiereDate    = "premiere_date"
 	FieldGenres          = "genres"
+
+	// The artwork fields. Their VALUES live in media_item_images rather than
+	// in a column, but their Source and Locked live in the same provenance
+	// table as every other field, so they are managed fields like any other
+	// and lock through the same guard.
+	FieldImagePrimary  = "image_primary"
+	FieldImageBackdrop = "image_backdrop"
+	FieldImageLogo     = "image_logo"
 )
+
+// Image types, in Reelix's own lowercase spelling. The capitalised forms
+// Jellyfin clients send and expect are a fact about those clients and are
+// settled at the compatibility boundary; see canonicalImageType.
+const (
+	ImagePrimary  = "primary"
+	ImageBackdrop = "backdrop"
+	ImageLogo     = "logo"
+)
+
+// ImageTypes is every image type Reelix downloads, in the order a refresh
+// attempts them.
+//
+// Three, matching the 0.0.2 scope. Each is attempted and stored independently,
+// so a film whose logo cannot be fetched still gets its poster.
+var ImageTypes = []string{ImagePrimary, ImageBackdrop, ImageLogo}
+
+// imageFields maps an image type onto the field name its provenance is
+// recorded under.
+var imageFields = map[string]string{
+	ImagePrimary:  FieldImagePrimary,
+	ImageBackdrop: FieldImageBackdrop,
+	ImageLogo:     FieldImageLogo,
+}
+
+// ImageField returns the provenance field name for an image type, reporting
+// whether the type is one Reelix manages.
+func ImageField(imageType string) (string, bool) {
+	field, ok := imageFields[imageType]
+	return field, ok
+}
 
 // MetadataSourceManual marks a value a person supplied.
 const MetadataSourceManual = "manual"
@@ -172,10 +211,35 @@ var managedFields = map[string]bool{
 	FieldOfficialRating:  true,
 	FieldPremiereDate:    true,
 	FieldGenres:          true,
+	FieldImagePrimary:    true,
+	FieldImageBackdrop:   true,
+	FieldImageLogo:       true,
 }
 
 // IsManagedField reports whether a field name is one the metadata layer knows.
 func IsManagedField(field string) bool { return managedFields[field] }
+
+// imageValueFields are the managed fields whose value is not a column.
+//
+// An image is lockable but NOT hand-settable in 0.0.2. Set takes a typed
+// value, and supplying an image means supplying a URL or bytes — which is the
+// image selection UI this milestone excludes. So an operator can pin the
+// image an item has, and cannot yet choose a different one: the lock means
+// "stop changing this", not "use this one".
+//
+// Stated as its own predicate rather than left to fail on a column lookup.
+// Set would refuse these fields anyway, because metadataColumns has no entry
+// for them — but an error by coincidence reads like a bug to whoever meets it,
+// and it would stop being an error the moment somebody added a column.
+var imageValueFields = map[string]bool{
+	FieldImagePrimary:  true,
+	FieldImageBackdrop: true,
+	FieldImageLogo:     true,
+}
+
+// IsImageField reports whether a field's value is an image rather than a
+// column, and so cannot be set by hand.
+func IsImageField(field string) bool { return imageValueFields[field] }
 
 // FieldProvenance is where one field's value came from and whether a person
 // has pinned it.
@@ -207,9 +271,79 @@ type ItemMetadata struct {
 	PremiereDate    *time.Time
 	Genres          []string
 
+	// Images is keyed by image type. An entry with no StoragePath is a
+	// recorded negative — the provider has no image of that type — which is
+	// why callers ask Image rather than reading the map directly.
+	Images map[string]ItemImage
+
 	// Provenance is keyed by field name. A field with no entry has never been
 	// written by anything.
 	Provenance map[string]FieldProvenance
+}
+
+// ItemImage is one stored image, or a recorded absence of one.
+//
+// StoragePath is relative to the cache directory. It is empty exactly when the
+// provider has no image of this type, and the zero value therefore reads
+// correctly as "nothing to serve" for a type never fetched at all.
+type ItemImage struct {
+	MediaItemID uuid.UUID
+	ImageType   string
+
+	StoragePath string
+
+	// Tag is 32 lowercase hex characters, the first half of the SHA-256 of the
+	// file content. Clients build image URLs from it and use it to cache-bust.
+	Tag         string
+	ContentType string
+
+	// Width and Height are the PROVIDER'S SOURCE dimensions, not the stored
+	// file's.
+	//
+	// The provider publishes its original — TMDB reports 2000x3000 for a
+	// poster — while the download asks for a size bucket and stores 780x1170.
+	// The two differ by a scale factor, so anyone reading these as the pixel
+	// size of the bytes Reelix serves is reading them wrong; measure the file.
+	//
+	// They are stored because their RATIO is what the compatibility layer
+	// needs for PrimaryImageAspectRatio, and a ratio is invariant under the
+	// bucket resize. Taking them from the provider's listing is what lets that
+	// field be answered without decoding a single pixel.
+	Width  int
+	Height int
+
+	SourceURL string
+
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// Stored reports whether this entry has bytes behind it, as opposed to being a
+// recorded negative.
+func (i ItemImage) Stored() bool { return i.StoragePath != "" }
+
+// Image returns one stored image, reporting whether there is one to serve. A
+// recorded negative and a type never fetched both answer false, which is what
+// every caller wants: neither has bytes.
+func (m ItemMetadata) Image(imageType string) (ItemImage, bool) {
+	img, ok := m.Images[imageType]
+	if !ok || !img.Stored() {
+		return ItemImage{}, false
+	}
+	return img, true
+}
+
+// AspectRatio returns the image's width divided by its height, reporting
+// whether it could be computed. Zero dimensions mean the provider did not say.
+//
+// Correct despite Width and Height describing the provider's original rather
+// than the stored file: the download only rescales, so the ratio is the same
+// number. This is the one thing those two fields are for.
+func (i ItemImage) AspectRatio() (float64, bool) {
+	if i.Width <= 0 || i.Height <= 0 {
+		return 0, false
+	}
+	return float64(i.Width) / float64(i.Height), true
 }
 
 // Locked reports whether a field is pinned against refresh.
