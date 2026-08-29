@@ -195,13 +195,44 @@ matching.
 **Blocked:**
 - Nothing.
 
-**Handed to the operator:**
-- **Re-check the SK1 and jellyfin-web.** Gangland should now show an English
-  poster. Six other images changed as well — Congo's backdrop, three logos, and
-  all three of The Singers — so those are worth a glance too.
-- Note that this took a `?all=true` refresh. A default pass will not re-choose
-  artwork for items that already have rows, which is correct but does mean a
-  selection change never applies retroactively on its own.
+**Handed to the operator, deferred to the next session by agreement, and
+GATING NOTHING:**
+
+Client verification of both halves of this work — the artwork slice and this
+selection fix — is the operator's, and it is **not** a prerequisite for item 4.
+The importer depends on external IDs and playback state, neither of which is
+touched by how a poster looks. **The next session should not wait on this or
+repeat it.**
+
+What has and has not been proved, written out rather than left to be
+re-derived:
+
+- **Proved:** the images are on disk and in the database; the image routes
+  serve them over real HTTP with the right status, content type and caching
+  headers, including the 304; the selection changed exactly the 7 of 17 images
+  a dry run against real TMDB predicted, and re-chose identically on a repeat.
+- **Not proved:** no client has rendered any of it. The Jellyfin item JSON
+  carrying real tags has never been fetched over HTTP, because `/Items/{id}`
+  needs a compat token this session did not have — the same limit that deferred
+  the identify route and the fields slice, and the same resolution.
+
+What to look for, on the SK1 and in jellyfin-web on `:8099`:
+
+- **Gangland with an English poster**, not the "Keep Quiet" festival print.
+  That is the whole point of the fix and the one thing that must have changed.
+- **Six other images also moved** and are worth a glance: Congo's backdrop,
+  the Idiocracy, Aang and Singers logos, and both of The Singers' other images.
+- **Gangland still with no logo.** TMDB has none; it is a stored negative, and
+  a logo appearing there would mean something fell back.
+- **Backdrops without a title burned into them.** That is the inverted
+  preference working, and Congo is the clearest case — 31 clean candidates
+  against 5 with text.
+
+One operational note that is easy to trip over: **this took a `?all=true`
+refresh.** A default pass will not re-choose artwork for items that already have
+rows, which is correct — but it does mean a selection change never applies
+retroactively on its own, and anyone testing a future selection change will
+otherwise conclude it did nothing.
 
 **Next step:**
 - Unchanged: **0.0.2 item 4, the Emby/Jellyfin watch-history importer.**
