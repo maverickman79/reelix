@@ -43,6 +43,11 @@ type harness struct {
 	srv  *httptest.Server
 	logs *bytes.Buffer
 	user domain.User
+
+	// cacheDir roots the artwork store, so an image test can put bytes where
+	// the serving path will look for them.
+	cacheDir string
+	metadata *service.MetadataService
 }
 
 func newHarness(t *testing.T) *harness {
@@ -95,8 +100,11 @@ func newHarness(t *testing.T) *harness {
 		t.Fatalf("creating user: %v", err)
 	}
 
+	cacheDir := t.TempDir()
+	metadataSvc := service.NewMetadataService(pool, nil, cacheDir, log)
+
 	api := New(service.NewSessionService(pool), service.NewMediaService(pool),
-		service.NewPlaybackService(pool), log)
+		service.NewPlaybackService(pool), metadataSvc, log)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		api.Routes().ServeHTTP(w, r.WithContext(logging.WithLogger(r.Context(), log)))
@@ -119,7 +127,10 @@ func newHarness(t *testing.T) *harness {
 		}
 	})
 
-	return &harness{t: t, pool: pool, srv: srv, logs: logs, user: user}
+	return &harness{
+		t: t, pool: pool, srv: srv, logs: logs, user: user,
+		cacheDir: cacheDir, metadata: metadataSvc,
+	}
 }
 
 // authHeader builds the header Wholphin sends, optionally carrying a token.

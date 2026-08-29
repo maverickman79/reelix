@@ -2,6 +2,7 @@ package jellyfin
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -187,33 +188,131 @@ func (a *API) handleLatestItems(w http.ResponseWriter, r *http.Request) {
 
 // handleItemImage serves GET /Items/{id}/Images/{type}.
 //
-// 404, always. Reelix downloads no artwork yet, so no item has an image of any
-// type — and this is the reference server's own answer in exactly that
-// situation: the recorded Chapter request came back 404 with this body, and a
-// live probe with a well-formed but nonexistent id answers 404 too.
-//
-// The items Reelix serves advertise no image tags, so a client should not ask
-// at all; a client that asks anyway gets the truth and renders its placeholder.
-//
 // The type is canonicalised rather than echoed, so that "primary" and
 // "Primary" are one type here and not two. See canonicalImageType: the route
-// parameter is not touched by the fold trie, so this is the only place the
-// spelling can be settled.
+// parameter is not touched by the fold trie, deliberately, so this is the only
+// place the spelling can be settled — and it is now load-bearing rather than
+// cosmetic, because a lookup keyed on the wrong spelling would 404 an image
+// that is on disk. VidHub is the client that lowercases its paths.
 //
-// An unknown type still answers 404. The reference answers 400 with an ASP.NET
+// UNAUTHENTICATED. See the registration in api.go for what that concedes.
+//
+// AN UNKNOWN TYPE STILL ANSWERS 404. The reference answers 400 with an ASP.NET
 // validation envelope naming the bad value; reproducing that would mean
 // inventing a body shape — including a traceId — for a request no observed
 // client makes. Recorded rather than reproduced.
 func (a *API) handleItemImage(w http.ResponseWriter, r *http.Request) {
 	kind := r.PathValue("type")
 	if kind == "" {
+		// The reference treats an omitted type as Primary.
 		kind = "Primary"
 	}
-	if canonical, ok := canonicalImageType(kind); ok {
-		kind = canonical
+	canonical, known := canonicalImageType(kind)
+	if !known {
+		a.writeJSON(w, r, http.StatusNotFound, "item does not have an image of type "+kind)
+		return
 	}
-	a.writeJSON(w, r, http.StatusNotFound, "item does not have an image of type "+kind)
+
+	id, err := parseCompatID(r.PathValue("id"))
+	if err != nil {
+		a.writeJSON(w, r, http.StatusNotFound, "item does not have an image of type "+canonical)
+		return
+	}
+
+	// Reelix stores one image per type, so index 0 is the only one that can
+	// exist. A client asking for another gets the truth.
+	if !firstImageIndex(r) {
+		a.writeJSON(w, r, http.StatusNotFound, "item does not have an image of type "+canonical)
+		return
+	}
+
+	img, err := a.metadata.GetImage(r.Context(), id, strings.ToLower(canonical))
+	if err != nil {
+		// A recorded negative, an absent row and an unknown item are one
+		// answer here: there are no bytes, and the client should draw its
+		// placeholder rather than retry.
+		a.writeJSON(w, r, http.StatusNotFound, "item does not have an image of type "+canonical)
+		return
+	}
+
+	file, info, err := a.metadata.Images().Open(img.StoragePath)
+	if err != nil {
+		// The row said there were bytes and there are not. 404 rather than
+		// 500: the client's correct response is identical to any other missing
+		// image, and a 500 invites a retry that cannot succeed.
+		//
+		// Nothing is written to the database from here. The repair belongs to
+		// the refresh pass's reconcile sweep, which stats every row and clears
+		// the stale ones — a read path that writes would be a second place
+		// that decides what a row means.
+		a.log.Warn("a stored image is missing from disk",
+			slog.String("item_id", id.String()),
+			slog.String("image_type", canonical),
+			slog.String("path", img.StoragePath))
+		a.writeJSON(w, r, http.StatusNotFound, "item does not have an image of type "+canonical)
+		return
+	}
+	defer file.Close()
+
+	// Matching the recorded response headers. Cache-Control and Last-Modified
+	// are the pair the reference uses — it sends no ETag — and the recorded
+	// capture shows a client returning with If-Modified-Since and being
+	// answered 304. ServeContent does that comparison, so conditional requests
+	// work without a second implementation of the rule.
+	w.Header().Set("Content-Type", img.ContentType)
+	w.Header().Set("Cache-Control", "public")
+	// Inert for an <img>, which is how every client here loads these, but the
+	// reference sends it and matching costs one line.
+	w.Header().Set("Content-Disposition", "attachment")
+
+	// The name is only used to guess a content type, which is already set.
+	http.ServeContent(w, r, "", info.ModTime(), file)
 }
+
+// firstImageIndex reports whether the request is for image index 0.
+//
+// The index arrives in two spellings — a path segment on the
+// /Images/{type}/{index} route, and an imageIndex query parameter, both of
+// which appear in the recorded traffic — and an absent index means 0.
+func firstImageIndex(r *http.Request) bool {
+	index := r.PathValue("index")
+	if index == "" {
+		index = queryValue(r, "imageIndex")
+	}
+	return index == "" || index == "0"
+}
+
+// RESIZING IS NOT IMPLEMENTED, AND THAT IS A DECISION RATHER THAN A GAP.
+//
+// Clients ask for specific dimensions: the recorded requests carry quality and
+// fillHeight, and the published spec also defines maxWidth, maxHeight,
+// fillWidth and others that no observed client sends. Reelix HONOURS NONE OF
+// THEM and serves the stored image.
+//
+// The sizing decision is made once per image at download time instead — see
+// posterSize and its neighbours in the TMDB provider — which puts the bytes on
+// the wire in roughly the range the reference server returned for the same
+// request, for no code here at all.
+//
+// What serve-time resizing would actually cost is not the resampling library.
+// It is the second cache: resized output keyed by dimensions, with its own
+// eviction policy, its own key derivation, and its own half-written-file
+// problem — the whole of this slice again, to serve a 780px poster into a
+// 344px slot.
+//
+// EVERY UNHONOURED PARAMETER IS ACCEPTED, NEVER REJECTED. Answering 400 for a
+// parameter Reelix does not implement would turn a cosmetic inefficiency into
+// a missing image, which is much the worse failure. The trigger to revisit is
+// evidence: a measured bandwidth problem, or a client that visibly renders
+// badly.
+//
+// THE LONG POSITIONAL IMAGE FORMS ARE STILL NOT ROUTED, for the same
+// evidence-first reason they were left out when there was no artwork. They are
+// confirmed to exist on the reference — see docs/compat-capture.md — but NO
+// CAPTURED REQUEST USES ONE: every recorded image request is
+// /Items/{id}/Images/{Type} with the parameters above. Their absence is
+// therefore a finding, not an oversight. Watch the access log while a real
+// client renders a grid, and add them if one appears.
 
 // handleItemIntros serves GET /Items/{id}/Intros.
 func (a *API) handleItemIntros(w http.ResponseWriter, r *http.Request) {

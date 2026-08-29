@@ -213,9 +213,6 @@ var absentInReelix = map[string]allowance{
 	// them through a null check, so null omits the element — and a fabricated
 	// value would NOT be omitted, it would render as a real rating or date.
 
-	// Artwork downloading is not implemented, so there is no image to measure.
-	"$..PrimaryImageAspectRatio": because("[us] no artwork, so no primary image to have a ratio [client] Wholphin BaseItem.kt guards with takeIf { it > 0 }"),
-
 	// Stream metadata the scanner still does not probe.
 	//
 	// Language, Title, Profile, PixelFormat, the two measured frame rates,
@@ -284,10 +281,34 @@ var absentInReelix = map[string]allowance{
 
 // dataObjects are recorded objects whose keys are data rather than schema.
 var dataObjects = map[string]allowance{
-	"$..ImageTags":           because("[us] keyed by image id; requiring one would mean inventing an image Reelix cannot serve [client] observed on hardware in 0.0.1, both clients draw a placeholder for an empty map"),
-	"$..ProviderIds":         because("[us] keyed by metadata provider, and Reelix has none [client] Wholphin reads it in one place, for external links it then omits"),
-	"$..Trickplay":           because("[us] keyed by resolution; trickplay is not implemented [client] Findroid fetches trickplay separately and treats an empty map as none"),
-	"$..ImageBlurHashes":     because("[us] keyed by image hash, for images Reelix does not have [unread] neither Wholphin nor Findroid reads it"),
+	// THE REASON HERE WAS WRONG, and it was wrong from the day it was written.
+	// It said "keyed by image id". The recorded responses key this object by
+	// image TYPE — {"Primary": ..., "Logo": ..., "Thumb": ...} — which anyone
+	// could have seen by opening a fixture. It survived because a dataObjects
+	// allowance constrains the TYPE only, so no test ever had to agree with
+	// the sentence explaining it.
+	//
+	// That is the second allowance found wrong by probing rather than by a
+	// test failing, after the Localized* entries that claimed a client
+	// supplied its own strings. Both are the same lesson as the redundant
+	// guards: an assertion nothing can fail is an assertion nobody can trust.
+	// The reasons are prose, and prose rots silently — read the fixture.
+	//
+	// It stays allowed, and NOT because Reelix has no artwork; it now emits a
+	// real tag per stored image. It stays because the tag VALUE can never
+	// equal a recording's. Every tag is a per-server digest of the bytes that
+	// server holds, so requiring equality would require Reelix to have
+	// downloaded the same file as the reference did. See imageTags for the
+	// shape Reelix produces and TestImageTagsAreServable for the assertion
+	// that actually has teeth.
+	"$..ImageTags":   because("[us] keyed by image TYPE, and the tag is a per-server digest of the stored bytes, so it can never equal a recorded one [client] both clients use it only to build an image URL, which Reelix answers"),
+	"$..ProviderIds": because("[us] keyed by metadata provider, and Reelix has none [client] Wholphin reads it in one place, for external links it then omits"),
+	"$..Trickplay":   because("[us] keyed by resolution; trickplay is not implemented [client] Findroid fetches trickplay separately and treats an empty map as none"),
+	// Unchanged by the artwork slice, and the reason is now narrower rather
+	// than weaker: Reelix HAS the images, but a blurhash is a perceptual
+	// encoding of them and computing one needs an encoder dependency for a
+	// field no client here reads.
+	"$..ImageBlurHashes":     because("[us] keyed by image type and hash; computing a blurhash needs an encoder dependency [unread] neither Wholphin nor Findroid reads it"),
 	"$..RequiredHttpHeaders": because("[us] a header map, empty for a file Reelix serves directly [unread] neither Wholphin nor Findroid reads it"),
 }
 

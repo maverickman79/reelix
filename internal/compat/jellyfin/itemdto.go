@@ -397,11 +397,20 @@ func newItemDTO(row repository.ItemWithFile, settings domain.ServerSettings, md 
 		Type:              "Movie",
 		UserData:          newUserDataDTO(row.Item.ID, row.State),
 		VideoType:         "VideoFile",
-		ImageTags:         map[string]string{},
-		BackdropImageTags: emptyStrings(),
+		ImageTags:         imageTags(md),
+		BackdropImageTags: backdropImageTags(md),
 		ImageBlurHashes:   map[string]map[string]string{},
 		LocationType:      "FileSystem",
 		MediaType:         "Video",
+	}
+
+	// The poster's shape, from the dimensions the provider published, so no
+	// image is decoded to answer it. Null when there is no poster: Wholphin
+	// guards with takeIf { it > 0 }, and a 0 would be a claim nobody made.
+	if primary, ok := md.Image(domain.ImagePrimary); ok {
+		if ratio, ok := primary.AspectRatio(); ok {
+			dto.PrimaryImageAspectRatio = &ratio
+		}
 	}
 
 	if row.File != nil {
@@ -409,6 +418,46 @@ func newItemDTO(row repository.ItemWithFile, settings domain.ServerSettings, md 
 		dto.RunTimeTicks = runtimeTicks(row.File.DurationSeconds)
 	}
 	return dto
+}
+
+// imageTags is the map a client builds image URLs from, keyed by the
+// CAPITALISED image type: {"Primary": "<32 hex>", "Logo": "<32 hex>"}.
+//
+// PROBED, NOT INFERRED. The recorded detail responses key this object by image
+// TYPE — Primary, Logo, Thumb — and the tag is an opaque 32-lowercase-hex
+// digest. Nothing else about it is observable, which is what makes the value
+// Reelix's own to choose; see the image_tag column in migration 0012.
+//
+// Backdrops are not here. They are indexed rather than typed, and travel in
+// BackdropImageTags as an array.
+//
+// A TAG IS ONLY EMITTED FOR BYTES THAT EXIST. Advertising one Reelix cannot
+// serve would produce a broken image rather than the placeholder a client
+// draws for an item with no artwork, which is the worse of the two failures.
+func imageTags(md domain.ItemMetadata) map[string]string {
+	tags := map[string]string{}
+	for _, imageType := range []string{domain.ImagePrimary, domain.ImageLogo} {
+		if img, ok := md.Image(imageType); ok {
+			if canonical, ok := canonicalImageType(imageType); ok {
+				tags[canonical] = img.Tag
+			}
+		}
+	}
+	return tags
+}
+
+// backdropImageTags is the backdrop array, which carries tags positionally
+// rather than by name.
+//
+// At most one entry: 0.0.2 stores one backdrop per item, and multiple
+// candidates per type are excluded from the milestone. The array shape is the
+// reference's, and a client indexes into it, so one entry is a shorter list
+// rather than a different structure.
+func backdropImageTags(md domain.ItemMetadata) []string {
+	if img, ok := md.Image(domain.ImageBackdrop); ok {
+		return []string{img.Tag}
+	}
+	return emptyStrings()
 }
 
 // newItemDetailDTO translates a media item into its detail representation.

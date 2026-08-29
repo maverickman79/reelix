@@ -240,6 +240,14 @@ func TestItemsMatchesFixture(t *testing.T) {
 	seeded := seedMedia(t, h)
 	token := h.login()
 
+	// Every film gets a poster, for the same reason the detail comparison
+	// seeds one: PrimaryImageAspectRatio has no allowance any more. All of
+	// them rather than the first, because which item leads a listing depends
+	// on the sort the fixture asked for.
+	for _, item := range seeded.byTitle {
+		seedImage(t, h, item.ID, domain.ImagePrimary, posterBytes)
+	}
+
 	for _, name := range fixtureNames(t, "GET_Items") {
 		t.Run(name, func(t *testing.T) {
 			f := loadFixture(t, "GET_Items", name)
@@ -297,7 +305,17 @@ func TestItemDetailMatchesFixture(t *testing.T) {
 	seeded := seedMedia(t, h)
 	token := h.login()
 
-	id := compatID(seeded.byTitle["Idiocracy"].ID)
+	item := seeded.byTitle["Idiocracy"]
+	id := compatID(item.ID)
+
+	// A POSTER IS PART OF THE FIXTURE NOW, because PrimaryImageAspectRatio no
+	// longer has an allowance. Its reason was "no artwork, so no primary image
+	// to have a ratio", and artwork retired it — so the recorded number has to
+	// be answered with a real one, which means this comparison must run
+	// against an item that actually has a poster. Seeding one here is the
+	// allowance list doing its job: retiring an entry moves the obligation
+	// into the test rather than removing it.
+	seedImage(t, h, item.ID, domain.ImagePrimary, posterBytes)
 
 	for _, name := range fixtureNames(t, "GET_Items_{id}") {
 		t.Run(name, func(t *testing.T) {
@@ -984,33 +1002,42 @@ func TestItemImageDoesNotRequireAToken(t *testing.T) {
 	})
 }
 
-// TestItemImageTypeFoldsCase pins the other half of the artwork fix.
+// TestItemImageTypeFoldsCase pins the other half of the artwork fix, and it
+// now has teeth.
 //
 // The type is a route parameter, so routefold.go leaves its casing alone by
-// design. A client that lowercases its paths therefore delivers "primary"
-// here. While nothing has artwork both spellings 404 either way, so the
-// assertion that carries the meaning is the canonical NAME in the body: it is
-// what shows the two spellings arrived at one type rather than two.
+// design — lowercasing a parameter would corrupt item ids and container
+// extensions. A client that lowercases its paths, as VidHub does, therefore
+// delivers "primary" here and nothing upstream has capitalised it.
+//
+// WHILE THERE WAS NO ARTWORK THIS COULD ONLY ASSERT A NAME IN A 404 BODY,
+// because both spellings 404 either way. Now that an image exists, every
+// spelling must SERVE IT: a lookup keyed on the wrong casing would 404 an
+// image that is on disk, which is the whole failure the fold note predicted.
 func TestItemImageTypeFoldsCase(t *testing.T) {
 	h := newHarness(t)
 	seeded := seedMedia(t, h)
-	id := compatID(seeded.byTitle["Idiocracy"].ID)
+	item := seeded.byTitle["Idiocracy"]
+	id := compatID(item.ID)
+	seedImage(t, h, item.ID, domain.ImagePrimary, posterBytes)
 
 	for _, spelling := range []string{"Primary", "primary", "PRIMARY", "pRiMaRy"} {
 		t.Run(spelling, func(t *testing.T) {
 			resp := h.do(http.MethodGet, "/Items/"+id+"/Images/"+spelling, "", nil)
 			raw := h.bodyOf(resp)
-			if resp.StatusCode != http.StatusNotFound {
-				t.Fatalf("status %d, want 404: %s", resp.StatusCode, raw)
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("status %d, want 200: %s", resp.StatusCode, raw)
 			}
-			if !strings.Contains(string(raw), "Primary") {
-				t.Errorf("body does not name the canonical type: %s", raw)
+			if string(raw) != posterBytes {
+				t.Errorf("a spelling of the type served something other than the stored image")
 			}
 		})
 	}
 
-	// An unknown type is echoed as sent and still 404s. The reference answers
-	// 400 here; see handleItemImage for why that is recorded not reproduced.
+	// An unknown type is echoed as sent and still 404s, even for an item that
+	// HAS a poster — "Poster" must not be folded onto "Primary". The reference
+	// answers 400 here; see handleItemImage for why that is recorded rather
+	// than reproduced.
 	t.Run("an unknown type is not invented into a real one", func(t *testing.T) {
 		resp := h.do(http.MethodGet, "/Items/"+id+"/Images/Poster", "", nil)
 		raw := h.bodyOf(resp)

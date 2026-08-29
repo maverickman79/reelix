@@ -15,7 +15,7 @@ import (
 // neither the database nor the session service. Tests using it run without
 // REELIX_TEST_DB_DSN.
 func newTestAPI() *API {
-	return New(nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return New(nil, nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
 // polledRoutes are the home-screen routes implemented in the first half of

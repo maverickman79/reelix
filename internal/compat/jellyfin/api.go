@@ -32,16 +32,19 @@ type API struct {
 	sessions *service.SessionService
 	media    *service.MediaService
 	playback *service.PlaybackService
+	metadata *service.MetadataService
 	log      *slog.Logger
 }
 
 // New builds the compatibility API.
 func New(sessions *service.SessionService, media *service.MediaService,
-	playback *service.PlaybackService, log *slog.Logger) *API {
+	playback *service.PlaybackService, metadata *service.MetadataService,
+	log *slog.Logger) *API {
 	return &API{
 		sessions: sessions,
 		media:    media,
 		playback: playback,
+		metadata: metadata,
 		log:      logging.Component(log, "compat"),
 	}
 }
@@ -123,8 +126,8 @@ func (a *API) registerCompatRoutes(mux *routeTable) {
 	mux.handle("GET /Items/{id}/ThemeSongs", a.requireAuth(a.handleThemeSongs))
 	mux.handle("GET /MediaSegments/{id}", a.requireAuth(a.handleMediaSegments))
 
-	// No artwork exists yet. Both spellings of the route are registered
-	// because clients build image URLs with and without an index.
+	// Artwork. Both spellings of the route are registered because clients
+	// build image URLs with and without an index.
 	//
 	// UNAUTHENTICATED, deliberately, and this is the second exception on the
 	// compatibility surface after the stream endpoint. Wholphin requests
@@ -132,21 +135,31 @@ func (a *API) registerCompatRoutes(mux *routeTable) {
 	// browse grid answering 404 six times with a token and the playback screen
 	// answering 401 five seconds later without one. A 401 is a retry; a 404 is
 	// final, so the credentialled and uncredentialled answers disagreeing is
-	// what turns a missing poster into a loop once artwork exists.
+	// what turns a missing poster into a loop.
 	//
 	// This MATCHES the reference rather than relaxing something it enforces:
 	// probed unauthenticated, /Items/{id}/Images/{type} answers 400 for a
 	// malformed id and 404 for an absent image, never 401, while /Items/{id}
 	// alongside it answers 401. Artwork is public on a real Jellyfin.
 	//
-	// It is not the stream endpoint's capability model and must not be
-	// confused with it: there is no tag here because there is nothing yet to
-	// protect. WHOEVER IMPLEMENTS ARTWORK decides then whether a poster is
-	// public, and has this note saying the answer was "public, like the
-	// reference" for as long as the answer cost nothing.
+	// THE DECISION THIS NOTE ONCE DEFERRED IS NOW MADE, and so is its cost.
+	// Artwork exists, and posters stay public. What that concedes: anyone
+	// holding an item's UUID can fetch its poster, backdrop and logo without
+	// authenticating. The id is unguessable and a poster is not the film, so
+	// the exposure is small — but it is real, and a future session designing a
+	// sharing model should find it written down rather than rediscover it.
+	// The alternative was rejected on evidence, not taste: requiring a
+	// credential here reintroduces the retry loop above, on the one client
+	// that defines success for this project.
+	//
+	// It is NOT the stream endpoint's capability model and must not be
+	// confused with it. The image tag is a cache-busting digest, not a
+	// capability: the handler does not check it, and a request that omits it
+	// is served exactly like one that carries it.
 	//
 	// {type} is a PARAMETER, so the fold trie does not touch it. It is
-	// canonicalised in the handler instead — see canonicalImageType.
+	// canonicalised in the handler instead — see canonicalImageType, which
+	// stops being cosmetic the moment there is an image to miss.
 	mux.handle("GET /Items/{id}/Images/{type}", a.handleItemImage)
 	mux.handle("GET /Items/{id}/Images/{type}/{index}", a.handleItemImage)
 
