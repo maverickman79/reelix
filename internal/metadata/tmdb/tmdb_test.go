@@ -18,7 +18,7 @@ func newTestClient(t *testing.T, h http.HandlerFunc) *Client {
 	t.Helper()
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	return New(srv.URL, "test-key", "US", 5*time.Second)
+	return New(srv.URL, srv.URL+"/img", "test-key", "US", 5*time.Second, 5*time.Second)
 }
 
 // searchBody is a trimmed real /search/movie response: the three fields the
@@ -161,7 +161,7 @@ func TestErrorsNeverCarryTheAPIKey(t *testing.T) {
 	t.Run("transport failure", func(t *testing.T) {
 		// Nothing listens here, so the client fails inside http.Do and gets a
 		// *url.Error carrying the full URL.
-		c := New("http://127.0.0.1:1", key, "US", time.Second)
+		c := New("http://127.0.0.1:1", "http://127.0.0.1:1", key, "US", time.Second, time.Second)
 		_, err := c.SearchMovie(context.Background(), metadata.MovieQuery{Title: "Fight Club"})
 		if err == nil {
 			t.Fatal("expected a transport error")

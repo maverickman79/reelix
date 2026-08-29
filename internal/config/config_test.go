@@ -16,6 +16,7 @@ func setEnv(t *testing.T, env map[string]string) {
 		"REELIX_DB_HOST", "REELIX_DB_PORT", "REELIX_DB_NAME",
 		"REELIX_DB_USER", "REELIX_DB_PASSWORD", "REELIX_DB_SSLMODE",
 		"REELIX_TMDB_API_KEY", "REELIX_TMDB_BASE_URL", "REELIX_METADATA_TIMEOUT",
+		"REELIX_TMDB_IMAGE_BASE_URL", "REELIX_IMAGE_TIMEOUT",
 	} {
 		t.Setenv(k, "")
 	}
@@ -91,6 +92,15 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Paths.ConfigDir != DefaultConfigDir {
 		t.Errorf("Paths.ConfigDir = %q, want %q", cfg.Paths.ConfigDir, DefaultConfigDir)
 	}
+	if cfg.Metadata.TMDBImageBaseURL != DefaultTMDBImageBaseURL {
+		t.Errorf("Metadata.TMDBImageBaseURL = %q, want %q",
+			cfg.Metadata.TMDBImageBaseURL, DefaultTMDBImageBaseURL)
+	}
+	if cfg.Metadata.ImageTimeout != DefaultImageTimeout {
+		t.Errorf("Metadata.ImageTimeout = %s, want %s",
+			cfg.Metadata.ImageTimeout, DefaultImageTimeout)
+	}
+
 	if cfg.Paths.CacheDir != DefaultCacheDir {
 		t.Errorf("Paths.CacheDir = %q, want %q", cfg.Paths.CacheDir, DefaultCacheDir)
 	}
@@ -116,11 +126,16 @@ func TestLoadOverrides(t *testing.T) {
 		"REELIX_DB_SSLMODE":       "require",
 		"REELIX_TMDB_API_KEY":     "tmdb-key",
 		"REELIX_METADATA_TIMEOUT": "30s",
+		"REELIX_IMAGE_TIMEOUT":    "90s",
 	})
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() returned error: %v", err)
+	}
+
+	if cfg.Metadata.ImageTimeout != 90*time.Second {
+		t.Errorf("Metadata.ImageTimeout = %s, want 90s", cfg.Metadata.ImageTimeout)
 	}
 
 	if cfg.Metadata.TMDBAPIKey != "tmdb-key" {

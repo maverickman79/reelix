@@ -1,19 +1,21 @@
-// Package metadata identifies media items against external providers.
+// Package metadata resolves media items against external providers.
 //
-// Identity only. This package answers "which real film is this file?" and
-// deliberately answers nothing else — no overview, no rating, no genre, no
-// artwork. Those hang off an identity once one exists, and mixing them in here
-// would mean the thing everything else depends on arrives entangled with the
-// things that depend on it.
+// IDENTITY FIRST, and the ordering is structural rather than historical.
+// Matching answers "which real film is this file?" using nothing but the file:
+// a provider search returns a candidate's title and year, and those are carried
+// for SCORING and never stored, because writing a provider's title over the
+// parsed one would make re-identification change its own input on every run.
 //
-// A provider search returns a candidate's title and year. They are carried for
-// SCORING and are not stored: writing the provider's title over the parsed one
-// is field fetching, which is the next slice, not this one.
+// Everything else — overview, rating, genres, artwork — hangs off an identity
+// once one exists, and is fetched by the field and image methods below. Keeping
+// the match independent of them is what stops the thing everything depends on
+// arriving entangled with the things that depend on it.
 package metadata
 
 import (
 	"context"
 	"errors"
+	"io"
 	"time"
 )
 
@@ -75,6 +77,19 @@ type Provider interface {
 	// FetchMetadata returns the managed fields for one of this provider's
 	// items. Called once per identified film by the refresh pass.
 	FetchMetadata(ctx context.Context, providerID string) (MovieMetadata, error)
+
+	// FetchImage downloads the bytes of one image, returning the body and its
+	// content type. The caller closes the body.
+	//
+	// It takes a URL rather than an id because FetchMetadata already resolved
+	// which image to fetch and where it lives; this is the transfer, not the
+	// choice. It is on the interface rather than being a bare HTTP GET in the
+	// service so that a provider owns its own CDN, timeouts and rate-limit
+	// signalling — and so a test can supply bytes without standing up a server.
+	//
+	// The body is returned UNREAD so the caller can stream it to disk while
+	// hashing, rather than holding a backdrop in memory.
+	FetchImage(ctx context.Context, imageURL string) (io.ReadCloser, string, error)
 }
 
 // MovieMetadata is what a provider knows about a film, beyond its identity.
@@ -106,6 +121,29 @@ type MovieMetadata struct {
 	// Genres in the provider's own order, which is meaningful: providers list
 	// the primary genre first and clients show the first few.
 	Genres []string
+
+	// Images is the best candidate per image type, keyed by Reelix's lowercase
+	// type name. A type the provider has no image for is ABSENT from the map,
+	// which is what lets the refresh pass record a negative rather than
+	// re-asking about it on every run.
+	//
+	// One candidate per type, not a list: choosing between candidates is the
+	// image selection UI that 0.0.2 excludes, so the provider picks and says
+	// which it picked.
+	Images map[string]ImageCandidate
+}
+
+// ImageCandidate is one image a provider offers, before it is downloaded.
+//
+// It carries dimensions because the provider already published them, which is
+// what lets PrimaryImageAspectRatio be answered without decoding a single
+// pixel.
+type ImageCandidate struct {
+	// URL is absolute and ready to fetch.
+	URL string
+
+	Width  int
+	Height int
 }
 
 // MovieQuery is what the filename parser produced.

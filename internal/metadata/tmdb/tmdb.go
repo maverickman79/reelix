@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/maverickman79/reelix/internal/domain"
 	"github.com/maverickman79/reelix/internal/metadata"
 )
 
@@ -28,22 +29,30 @@ const Name = "tmdb"
 
 // Client is a TMDB provider.
 type Client struct {
-	baseURL string
-	apiKey  string
-	region  string
-	http    *http.Client
+	baseURL      string
+	imageBaseURL string
+	apiKey       string
+	region       string
+	http         *http.Client
+
+	// imageHTTP is separate from http because an image download is a different
+	// shape of request: megabytes rather than kilobytes, and so a timeout that
+	// is right for one abandons the other. Nothing else differs.
+	imageHTTP *http.Client
 }
 
 // New returns a Client. The key is not verified here; see the note on
 // config.Metadata for why reachability is not a startup condition.
 //
 // region is the ISO 3166-1 country whose certification becomes OfficialRating.
-func New(baseURL, apiKey, region string, timeout time.Duration) *Client {
+func New(baseURL, imageBaseURL, apiKey, region string, timeout, imageTimeout time.Duration) *Client {
 	return &Client{
-		baseURL: strings.TrimRight(baseURL, "/"),
-		apiKey:  apiKey,
-		region:  strings.ToUpper(region),
-		http:    &http.Client{Timeout: timeout},
+		baseURL:      strings.TrimRight(baseURL, "/"),
+		imageBaseURL: strings.TrimRight(imageBaseURL, "/"),
+		apiKey:       apiKey,
+		region:       strings.ToUpper(region),
+		http:         &http.Client{Timeout: timeout},
+		imageHTTP:    &http.Client{Timeout: imageTimeout},
 	}
 }
 
@@ -194,10 +203,27 @@ func (c *Client) FetchMetadata(ctx context.Context, providerID string) (metadata
 				} `json:"release_dates"`
 			} `json:"results"`
 		} `json:"release_dates"`
+		Images struct {
+			Posters   []imageCandidate `json:"posters"`
+			Backdrops []imageCandidate `json:"backdrops"`
+			Logos     []imageCandidate `json:"logos"`
+		} `json:"images"`
 	}
 
-	err := c.get(ctx, "/movie/"+url.PathEscape(providerID),
-		url.Values{"append_to_response": {"release_dates"}}, &body)
+	// ARTWORK COSTS NO EXTRA PROVIDER REQUEST. "images" is appended to the
+	// request this method already makes, so a library-wide refresh sends the
+	// same number of calls to TMDB with artwork as it did without. Only the
+	// image BYTES are extra, and those come from a CDN rather than the API.
+	//
+	// include_image_language=en,null is what makes logos usable: a logo is
+	// artwork with the title rendered into it, so it is language-tagged, and
+	// the unfiltered listing returns every language TMDB holds. "null" is the
+	// language-neutral art — usually the textless poster — and is wanted for
+	// its own sake rather than as a fallback.
+	err := c.get(ctx, "/movie/"+url.PathEscape(providerID), url.Values{
+		"append_to_response":     {"release_dates,images"},
+		"include_image_language": {"en,null"},
+	}, &body)
 	if err != nil {
 		return metadata.MovieMetadata{}, err
 	}
@@ -224,7 +250,137 @@ func (c *Client) FetchMetadata(ctx context.Context, providerID string) (metadata
 			out.Genres = append(out.Genres, g.Name)
 		}
 	}
+
+	out.Images = map[string]metadata.ImageCandidate{}
+	c.addImage(out.Images, domain.ImagePrimary, posterSize, body.Images.Posters)
+	c.addImage(out.Images, domain.ImageBackdrop, backdropSize, body.Images.Backdrops)
+	c.addImage(out.Images, domain.ImageLogo, logoSize, body.Images.Logos)
+
 	return out, nil
+}
+
+// The TMDB size buckets Reelix downloads.
+//
+// THIS IS WHERE THE SIZING DECISION IS MADE, once per image at download time,
+// rather than per request at serve time. Clients ask for specific dimensions —
+// the recorded requests carry quality and fillHeight — and Reelix honours none
+// of them, because serve-time resizing needs a resampling library AND a second
+// cache keyed by dimensions, with its own eviction, its own keying and its own
+// partial-write problem. The second cache is the expensive half, not the
+// library.
+//
+// Choosing the bucket here gets most of the benefit for none of that: a w780
+// poster is roughly the size the reference server returned for the same
+// request, so the bytes on the wire are already in the right range. What it
+// concedes is that a client asking for a 100px grid thumbnail still receives a
+// 780px poster. Wasteful, not wrong, and the trigger to revisit is a measured
+// bandwidth problem or a client that renders badly.
+const (
+	posterSize   = "w780"
+	backdropSize = "w1280"
+	logoSize     = "w500"
+)
+
+// imageCandidate is one entry in TMDB's image listing.
+type imageCandidate struct {
+	FilePath    string  `json:"file_path"`
+	Width       int     `json:"width"`
+	Height      int     `json:"height"`
+	VoteAverage float64 `json:"vote_average"`
+	VoteCount   int     `json:"vote_count"`
+}
+
+// addImage picks the best candidate of one type and records it, or records
+// nothing when the provider has none.
+//
+// ABSENT IS THE POINT: a type with no candidates leaves no entry, and the
+// refresh pass turns that into a stored negative. Most films have no logo, so
+// without a recorded "there is none" every pass would re-ask about every one of
+// them forever.
+func (c *Client) addImage(
+	out map[string]metadata.ImageCandidate, imageType, size string, candidates []imageCandidate,
+) {
+	best, ok := bestImage(candidates)
+	if !ok {
+		return
+	}
+	out[imageType] = metadata.ImageCandidate{
+		URL:    c.imageBaseURL + "/" + size + best.FilePath,
+		Width:  best.Width,
+		Height: best.Height,
+	}
+}
+
+// bestImage picks one candidate deterministically.
+//
+// Highest community score, then most votes, then largest. Explicitly ordered
+// rather than taking the first entry, because TMDB does not document a sort and
+// depending on an undocumented one means the poster silently changes on a day
+// the API's ordering does. The tie-breaks matter more than the ranking here:
+// they are what make a re-run choose the same image, which is what "re-running
+// the pass downloads nothing" rests on.
+func bestImage(candidates []imageCandidate) (imageCandidate, bool) {
+	var best imageCandidate
+	found := false
+	for _, c := range candidates {
+		if c.FilePath == "" {
+			continue
+		}
+		if !found || betterImage(c, best) {
+			best, found = c, true
+		}
+	}
+	return best, found
+}
+
+func betterImage(a, b imageCandidate) bool {
+	switch {
+	case a.VoteAverage != b.VoteAverage:
+		return a.VoteAverage > b.VoteAverage
+	case a.VoteCount != b.VoteCount:
+		return a.VoteCount > b.VoteCount
+	case a.Width != b.Width:
+		return a.Width > b.Width
+	default:
+		// Last resort, and it has to be total: without it two identically
+		// rated images swap places between runs and the pass re-downloads on
+		// every pass.
+		return a.FilePath < b.FilePath
+	}
+}
+
+// FetchImage downloads one image's bytes.
+//
+// It returns the body unread so the caller can stream it straight to disk while
+// hashing it, rather than holding a backdrop in memory. The caller closes it.
+//
+// The size cap lives in the artwork store rather than here, because the store
+// is what writes bytes and a cap enforced anywhere else would be a second
+// guard on the same outcome.
+func (c *Client) FetchImage(ctx context.Context, imageURL string) (io.ReadCloser, string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, imageURL, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("tmdb: building image request: %w", err)
+	}
+	req.Header.Set("Accept", "image/*")
+
+	// No API key: the image CDN does not take one, and sending it would put a
+	// credential on a host that has no use for it.
+	resp, err := c.imageHTTP.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("tmdb: downloading image: %w", redactedErr(err, c.apiKey))
+	}
+
+	switch {
+	case resp.StatusCode == http.StatusTooManyRequests:
+		resp.Body.Close()
+		return nil, "", fmt.Errorf("%w: tmdb image", metadata.ErrRateLimited)
+	case resp.StatusCode != http.StatusOK:
+		resp.Body.Close()
+		return nil, "", fmt.Errorf("tmdb: image returned %d", resp.StatusCode)
+	}
+
+	return resp.Body, resp.Header.Get("Content-Type"), nil
 }
 
 // officialRating picks the certification for one region.

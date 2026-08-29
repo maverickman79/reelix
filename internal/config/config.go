@@ -42,9 +42,27 @@ const (
 	// test can point at an httptest server without the suite reaching the
 	// real internet.
 	DefaultTMDBBaseURL = "https://api.themoviedb.org/3"
+
+	// DefaultTMDBImageBaseURL is where image BYTES come from. A different host
+	// from the API, and a different kind of request: no key, no JSON, and a
+	// response measured in megabytes rather than kilobytes.
+	//
+	// TMDB publishes this base through its /configuration endpoint. It is
+	// defaulted here with an override rather than discovered, so that starting
+	// the server costs no provider request and a change of CDN is one
+	// environment variable rather than a release.
+	DefaultTMDBImageBaseURL = "https://image.tmdb.org/t/p"
 	// One provider call. Identity makes one search per unidentified item, so
 	// this bounds a single request, not the pass.
 	DefaultMetadataTimeout = 15 * time.Second
+
+	// DefaultImageTimeout bounds one image download.
+	//
+	// Longer than a metadata request because it is a different shape of
+	// transfer: a 1280-wide backdrop is a couple of megabytes where a JSON
+	// response is a couple of kilobytes, and a timeout tuned for the second
+	// would abandon the first on any slow link.
+	DefaultImageTimeout = 60 * time.Second
 
 	// DefaultMetadataRegion selects which country's certification becomes
 	// OfficialRating. US is the default because it is right for most users of
@@ -84,8 +102,13 @@ type Metadata struct {
 	// TMDBBaseURL exists so tests can redirect the provider. Deployments
 	// should leave it alone.
 	TMDBBaseURL string
+	// TMDBImageBaseURL is the CDN base for image bytes; see the default.
+	TMDBImageBaseURL string
 	// RequestTimeout bounds one provider HTTP request.
 	RequestTimeout time.Duration
+	// ImageTimeout bounds one image download, which is a much larger transfer
+	// than a metadata request; see DefaultImageTimeout.
+	ImageTimeout time.Duration
 
 	// Region is the ISO 3166-1 country whose film certification becomes
 	// OfficialRating, e.g. "US", "GB", "DE".
@@ -192,10 +215,12 @@ func Load() (Config, error) {
 			ProbeTimeout: DefaultProbeTimeout,
 		},
 		Metadata: Metadata{
-			TMDBAPIKey:     lookupString("REELIX_TMDB_API_KEY", ""),
-			TMDBBaseURL:    lookupString("REELIX_TMDB_BASE_URL", DefaultTMDBBaseURL),
-			RequestTimeout: DefaultMetadataTimeout,
-			Region:         strings.ToUpper(lookupString("REELIX_METADATA_REGION", DefaultMetadataRegion)),
+			TMDBAPIKey:       lookupString("REELIX_TMDB_API_KEY", ""),
+			TMDBBaseURL:      lookupString("REELIX_TMDB_BASE_URL", DefaultTMDBBaseURL),
+			TMDBImageBaseURL: lookupString("REELIX_TMDB_IMAGE_BASE_URL", DefaultTMDBImageBaseURL),
+			RequestTimeout:   DefaultMetadataTimeout,
+			ImageTimeout:     DefaultImageTimeout,
+			Region:           strings.ToUpper(lookupString("REELIX_METADATA_REGION", DefaultMetadataRegion)),
 		},
 	}
 
@@ -208,6 +233,18 @@ func Load() (Config, error) {
 			fail("REELIX_METADATA_TIMEOUT: must be positive, got %q", raw)
 		default:
 			cfg.Metadata.RequestTimeout = d
+		}
+	}
+
+	if raw, ok := lookup("REELIX_IMAGE_TIMEOUT"); ok {
+		d, err := time.ParseDuration(raw)
+		switch {
+		case err != nil:
+			fail("REELIX_IMAGE_TIMEOUT: %q is not a duration (want e.g. 60s, 2m)", raw)
+		case d <= 0:
+			fail("REELIX_IMAGE_TIMEOUT: must be positive, got %q", raw)
+		default:
+			cfg.Metadata.ImageTimeout = d
 		}
 	}
 
