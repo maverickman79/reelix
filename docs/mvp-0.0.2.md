@@ -69,21 +69,27 @@ Titles, overviews, ratings, artwork — **and the external IDs item 4 depends
 on**. That dependency is the reason this comes before the importer rather
 than after it.
 
-**Two known limitations become live the moment artwork exists**, both
-recorded in the 0.0.1 retrospective and neither yet resolved:
+DONE. TMDB is the provider, chosen and approved. Identity, fields and artwork
+all landed; see the progress log entries of 2026-08-28 and 2026-08-29.
 
-- `/Items/{id}/Images/Primary` answers **401 rather than 404**. Harmless while
-  there is no artwork, because the client draws a placeholder either way. Once
-  images exist, a 401 on an image a client expects is a *retry*, where a 404
-  is final.
-- `/Items/{id}/Images/{type}` declares the image type as a route
-  **parameter**, and the fold trie in `routefold.go` rewrites literal segments
-  only, by design. So `.../Images/primary` reaches the handler lowercased.
-  Whoever implements artwork must either compare the type case-insensitively
-  or split the pattern into literal alternatives, or a client that lowercases
-  its paths gets a 404 for an image that exists.
+**The two known limitations that became live with artwork are both RESOLVED**,
+and each is now pinned by a test that fails if it regresses:
 
-No scraper source has been chosen. Choose and get approval before writing it.
+- ~~`/Items/{id}/Images/Primary` answers **401 rather than 404**.~~ RESOLVED.
+  The image routes are unauthenticated, matching the reference, which was
+  probed rather than assumed. `TestItemImageIsPublic` pins it. What that
+  concedes is recorded at the route registration in `api.go`: anyone holding an
+  item UUID can fetch its poster.
+- ~~`/Items/{id}/Images/{type}` declares the image type as a route
+  **parameter**~~ RESOLVED. The type is canonicalised in the handler through
+  `canonicalImageType`, and storage is keyed on its output.
+  `TestItemImageTypeFoldsCase` now requires every spelling to SERVE the image
+  rather than merely to 404 with the same name.
+
+**One question is deliberately left open for a real client:** the long
+positional image forms exist on the reference but appear in no captured
+request, so they are still not routed. Watch the access log while a client
+renders a grid and add them only if one appears.
 
 ### 4. Emby/Jellyfin watch-history importer
 

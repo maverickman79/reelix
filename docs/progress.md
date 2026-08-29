@@ -21,6 +21,241 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-29 — artwork, and a test that could not see its own guard
+
+**Completed:**
+- 0.0.2 item 3, artwork half: posters, backdrops and logos downloaded from
+  TMDB, stored on the filesystem, and served through the Jellyfin image routes.
+- `PrimaryImageAspectRatio` retired from the allowance list.
+- **Item 3 is done.** Next is item 4, the watch-history importer.
+
+**Live against real TMDB, all six films — 17 images, 2.4 MB:**
+
+| Film | Poster | Backdrop | Logo |
+|---|---|---|---|
+| Congo | 2220743f | 1a796fa1 | 29da05df |
+| Fight Club | 4f627454 | 9120eb20 | 5576033f |
+| Gangland | 1a2cd601 | a0f08816 | **(none)** |
+| Idiocracy | 5256f2d2 | 4c7e5118 | 5185733c |
+| The Legend of Aang | c1c8ffc9 | 37e7d31f | 27192c72 |
+| The Singers | 8bf67313 | fe88e620 | ad54b8ad |
+
+**Gangland's missing logo is a stored NEGATIVE, not a gap** — a row with a null
+path, meaning "the provider has none". Most films have no logo, so without that
+row every pass would re-ask about every one of them forever. It is the same
+distinction the fields slice draws between an absent value and an empty one:
+
+    no row      never attempted, or the attempt failed  -> retry
+    path set    we have it                              -> skip
+    path NULL   the provider says there is none         -> skip
+
+**The second pass fetched nothing at all** — `fetched=0, images_downloaded=0`,
+not merely zero downloads — because an item with a row for every type is no
+longer selected. Fight Club's hand-corrected overview from the previous session
+survived again, reported as `fields_skipped_locked=1`.
+
+**Artwork costs no extra provider request.** `images` is appended to the
+`/movie/{id}` call `FetchMetadata` already makes, so a library-wide refresh
+sends TMDB exactly as many API calls as it did before artwork existed. Only the
+image bytes are extra, and those come from the CDN.
+
+### A test that could not see the guard it was named after
+
+The most useful finding, and it is the **fields slice's lesson arriving in a
+new place: the test suite rather than the code.**
+
+`TestSaveIsAtomic` asserted that a download failing halfway leaves nothing under
+the name the serving path reads. Fault injection replaced the temp-file-plus-
+rename with a direct write to the final name — deleting the atomicity outright
+— **and the test still passed.**
+
+The reason is the failure path. `Save` removes its own temporary file on error;
+once the temporary name *is* the final name, that cleanup deletes the very file
+the test was looking for. Two mechanisms, the rename and the cleanup,
+guaranteeing one asserted outcome. Removing either alone changed nothing
+observable, so neither could be tested.
+
+**This is exactly the shape of the two redundant guards found in the fields
+slice, one layer out.** There the redundancy was in the code; here the code was
+right and the *assertion* collapsed two mechanisms into one observation.
+
+> **An outcome reachable by two mechanisms cannot test either.** It does not
+> matter whether the two live in the code or are merely conflated by the test.
+> Assert the property that only one mechanism provides.
+
+The fix was to split it by property, and each half now fails alone:
+
+- `TestSaveNeverExposesAPartialFile` — observes the store from another goroutine
+  *while a write is in progress*. Only the rename can make a half-written file
+  invisible under the served name. Fails when the rename goes.
+- `TestAFailedSaveLeavesNothingBehind` — about tidiness, so the sweep stays a
+  backstop rather than becoming load-bearing. Fails when the cleanup goes.
+
+**Six injections, each caught by its own test after the split:** the rename, the
+failure-path cleanup, `claimField` in `WriteImage`, the reconcile stat, the
+reconcile sweep itself, and the negative row. Removing the stat is caught by the
+re-run test rather than the wiped-cache one, which is correct — the pair pins it
+from both sides: one says do not delete what is there, the other says do delete
+what is gone.
+
+### Storage, and what makes /cache honest
+
+Bytes in `/cache/images/{aa}/{item-id}/{type}.{ext}`; the decision — which
+image, its digest, its dimensions, its provenance — in Postgres. The
+constitution puts both in persistent state and artwork divides across them: the
+bytes are a re-downloadable derivative, the choice is not.
+
+**That split is only defensible if a wiped cache recovers by itself**, so the
+pass stats every row it thinks it has and deletes the ones whose file has gone.
+Absence is already the retry queue, so the next ordinary refresh re-downloads.
+Verified live: removing one poster produced a 404, then one pass cleared one
+row, downloaded exactly one image, and restored the identical 198,203 bytes.
+
+**The write order is the design, and it continues across two layers:** bytes to
+a temporary name, fsync, atomic rename, fsync the directory — and only then the
+database row. A crash in between leaves an orphan file nothing advertises. The
+reverse order would advertise a tag for a file that is not there, which is the
+failure this whole slice existed to avoid.
+
+### ImageTags: the second allowance reason found wrong by probing
+
+The `$..ImageTags` allowance said the object is **"keyed by image id"**. The
+recorded responses key it by image **TYPE** — `{"Primary": ..., "Logo": ...,
+"Thumb": ...}` — which anyone could have seen by opening a fixture.
+
+It survived because a `dataObjects` allowance constrains the *type* only, so no
+test ever had to agree with the sentence explaining it.
+
+**That is the second allowance reason found wrong by probing rather than by a
+test failing**, after the `Localized*` entries that claimed the client supplied
+its own strings. Same family as the redundant guards: an assertion nothing can
+fail is an assertion nobody can trust. The reasons are prose, and prose rots
+silently — read the fixture.
+
+`ImageTags` **keeps its allowance with a corrected reason**, and not because
+Reelix lacks artwork any more. Every tag is a per-server digest of the bytes
+that server holds, so requiring equality with a recording would require having
+downloaded the same file the reference did. The assertion with teeth is
+`TestImageTagsAreServable`, which builds the URL a client builds from the tag
+the item advertises and fetches it.
+
+**`PrimaryImageAspectRatio` does retire** — its reason was "no artwork, so no
+primary image to have a ratio", and artwork retired it. Retiring an allowance
+moves the obligation into the tests rather than removing it: both fixture
+comparisons now have to seed a poster, because the recorded number has to be
+answered with a real one.
+
+**Decisions made:**
+- **The tag is the first 32 hex of the SHA-256 of the file content.** Every
+  recorded reference tag is an opaque 32-lowercase-hex digest and nothing about
+  its derivation is observable, which is what makes the value ours to choose.
+  Deriving it from the CONTENT is what makes cache-busting correct by
+  construction rather than by remembering to bump something.
+- **No serve-time resizing.** Clients send `quality` and `fillHeight`; the spec
+  also defines `maxWidth`/`maxHeight`, which **nothing in the capture sends**.
+  None are honoured and none are ever rejected — a 400 for an unimplemented
+  parameter turns a cosmetic inefficiency into a missing image. The sizing
+  decision is made once per image at download time instead (`w780`, `w1280`,
+  `w500`). **The deciding cost is not the resampling library, it is the second
+  cache**: resized output keyed by dimensions, with its own eviction, keying and
+  half-written-file problem — this whole slice again, to serve a 780px poster
+  into a 344px slot. Revisit on measured bandwidth or a client rendering badly.
+- **The image routes stay UNAUTHENTICATED, and the cost is now written at the
+  registration.** Anyone holding an item's UUID can fetch its poster without a
+  credential. The id is unguessable and a poster is not the film, but the
+  exposure is real, and **a future session designing a sharing model should find
+  it stated rather than rediscover it.** The alternative was rejected on
+  evidence: requiring a credential reintroduces the 401-is-a-retry loop on the
+  one client that defines success. It is NOT the stream endpoint's capability
+  model — the handler never checks the tag, and a request without one is served
+  identically.
+- **The positional image forms are still not routed.** They exist on the
+  reference, but **no captured request uses one** — every recorded image request
+  is `/Items/{id}/Images/{Type}` with query parameters. Their absence is a
+  finding, not an oversight. The trigger is the access log during a real client
+  render.
+- **An image is lockable but not hand-settable.** Choosing one means supplying a
+  URL or bytes, which is the selection UI 0.0.2 excludes. `Set` refuses the
+  three image fields BY NAME rather than failing on a missing column, because an
+  error by coincidence reads like a bug and would stop being an error the day
+  somebody added the column.
+- **Image provenance reuses `media_item_field_provenance` and the same
+  `claimField`.** Not to save columns: so there is one lock guard in the system
+  and one line to delete to make its tests fail.
+- **`width`/`height` are the PROVIDER'S SOURCE dimensions, not the stored
+  file's** — TMDB reports 2000x3000 for a poster stored at 780x1170. Their
+  *ratio* is what `PrimaryImageAspectRatio` needs and is invariant under the
+  resize, which is the whole reason they are kept. Documented on the domain type
+  because the column names alone are a trap.
+
+**Verified:**
+- `gofmt`, `go vet ./...` clean. Full suite green with a database and without.
+- **Fault-injected six ways**, each caught by its own test after the split above.
+- Live: migration 12 applied on restart; 17 images and one negative across six
+  films; 17 files on the cache volume, no `.tmp-` leftovers; the second pass
+  fetched nothing; a deleted file 404d, was reconciled, and was restored byte
+  for byte.
+- Live HTTP: 200 unauthenticated; **200 for lowercase `/Images/primary`**, which
+  is the fold-trie fix finally load-bearing; `Cache-Control: public` and
+  `Last-Modified` as recorded; **304 on `If-Modified-Since`**; `image/png` for
+  logos and `image/jpeg` for posters; 404 for the recorded negative and 404 for
+  an unknown type, which must not fold onto a real one.
+
+**In flight:**
+- Nothing.
+
+**Blocked:**
+- Nothing.
+
+**Handed to the operator, and NOT blocking item 4:**
+
+The completion criteria name **jellyfin-web on `:8099` and the SK1**, and
+neither can be seen from here. What has and has not been proved:
+
+- **Proved:** the images are on disk and in the database; the image routes serve
+  them over real HTTP with the right status, type and caching headers; the DTO
+  carries `ImageTags`, `BackdropImageTags` and `PrimaryImageAspectRatio` under
+  test, including both fixture comparisons.
+- **Not proved:** no client has rendered one. The Jellyfin item JSON carrying
+  real tags has never been fetched over HTTP, because `/Items/{id}` needs a
+  compat token this session did not have — the same limit that deferred the
+  identify route and the fields slice, and the same resolution.
+
+What to look for, and **this one should be plainly visible** — an invisible
+result is a fault:
+
+- Posters in the browse grid and a backdrop behind the detail screen.
+- **Gangland with no logo but a poster and backdrop.** TMDB has none; a logo
+  appearing there would mean something fell back.
+- **Watch the access log while the grid renders.** If a positional image form
+  appears, that is the evidence for routing them, and it is the one open
+  question this slice deliberately left to a real client.
+
+### One limitation, stated rather than designed around
+
+**A LOCKED image whose file is swept will not be re-fetched.** Reconcile deletes
+the row — a row claiming bytes that are not there is false whether or not
+somebody pinned it, and leaving it makes the item advertise a tag that answers
+404, which is worse for a client than advertising nothing. The re-download is
+then correctly refused by `claimField`, so the item stays imageless until
+somebody unlocks it. It is logged with the item and field named.
+
+Both alternatives — a repair path that bypasses the lock, or a lock check that
+knows about repairs — are two write paths to one outcome, **which is the pattern
+this codebase has now removed twice.** A narrow, logged, recoverable limitation
+is the better trade. It needs somebody to have locked an image *and* the cache
+to have been lost.
+
+**Next step:**
+- **0.0.2 item 4, the Emby/Jellyfin watch-history importer** — the feature that
+  decides whether anyone switches. Its two prerequisites are now both in place:
+  playback state gives it somewhere to import into, and item 3 gives it the
+  external IDs to match an existing library against. Note that an export keyed
+  on IMDb is useless against a library that only knows TMDB, which is why
+  `ExternalIDs` resolves cross-provider ids rather than only the matching one.
+
+---
+
 ## 2026-08-28 — metadata fields, and two guards that made each other untestable
 
 **Completed:**

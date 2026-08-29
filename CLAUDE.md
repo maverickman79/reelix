@@ -32,7 +32,7 @@ non-trivial change.
 
 > 1. Playback state — **done**
 > 2. Stream metadata — **done**
-> 3. Metadata scraping
+> 3. Metadata scraping — **done**
 > 4. Emby/Jellyfin watch-history importer
 > 5. Admin GUI
 
