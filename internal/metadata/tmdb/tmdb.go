@@ -215,14 +215,20 @@ func (c *Client) FetchMetadata(ctx context.Context, providerID string) (metadata
 	// same number of calls to TMDB with artwork as it did without. Only the
 	// image BYTES are extra, and those come from a CDN rather than the API.
 	//
-	// include_image_language=en,null is what makes logos usable: a logo is
-	// artwork with the title rendered into it, so it is language-tagged, and
-	// the unfiltered listing returns every language TMDB holds. "null" is the
-	// language-neutral art — usually the textless poster — and is wanted for
-	// its own sake rather than as a fallback.
+	// NO include_image_language FILTER, and this is a deliberate reversal.
+	//
+	// It was once "en,null", which looks like a sensible narrowing and is not:
+	// a film TMDB holds only Japanese posters for came back with NO posters at
+	// all, and the pass recorded a negative — meaning that film shows no
+	// poster, forever, with nothing to indicate why. That is a live gap for
+	// any non-English library rather than a hypothetical one.
+	//
+	// Every language is fetched and the preference is applied in Go instead;
+	// see imageLanguagePreference. Measured on this library's most
+	// artwork-heavy film, dropping the filter takes the response from 43 KB to
+	// 74 KB — one request either way, and far inside the read cap in get.
 	err := c.get(ctx, "/movie/"+url.PathEscape(providerID), url.Values{
-		"append_to_response":     {"release_dates,images"},
-		"include_image_language": {"en,null"},
+		"append_to_response": {"release_dates,images"},
 	}, &body)
 	if err != nil {
 		return metadata.MovieMetadata{}, err
@@ -283,11 +289,27 @@ const (
 
 // imageCandidate is one entry in TMDB's image listing.
 type imageCandidate struct {
-	FilePath    string  `json:"file_path"`
-	Width       int     `json:"width"`
-	Height      int     `json:"height"`
+	FilePath string `json:"file_path"`
+	Width    int    `json:"width"`
+	Height   int    `json:"height"`
+
+	// Iso639 is the image's language, or nil for language-neutral artwork —
+	// usually a textless poster or a backdrop with no title burned into it.
+	// A pointer because null and a two-letter code are different answers and
+	// TMDB never sends an empty string for either.
+	Iso639 *string `json:"iso_639_1"`
+
 	VoteAverage float64 `json:"vote_average"`
 	VoteCount   int     `json:"vote_count"`
+}
+
+// language returns the candidate's language with nil rendered as "", which is
+// how the preference lists spell language-neutral.
+func (c imageCandidate) language() string {
+	if c.Iso639 == nil {
+		return ""
+	}
+	return *c.Iso639
 }
 
 // addImage picks the best candidate of one type and records it, or records
@@ -300,7 +322,7 @@ type imageCandidate struct {
 func (c *Client) addImage(
 	out map[string]metadata.ImageCandidate, imageType, size string, candidates []imageCandidate,
 ) {
-	best, ok := bestImage(candidates)
+	best, ok := bestImage(candidates, imageLanguagePreference[imageType])
 	if !ok {
 		return
 	}
@@ -311,42 +333,120 @@ func (c *Client) addImage(
 	}
 }
 
+// minImageVotes is the sample below which TMDB's image score is not evidence.
+//
+// TMDB publishes a RAW, UNSHRUNK MEAN for an image. One vote of 10/10
+// normalises to 3.333, and 3.333 outranks every image scoring below it however
+// many people supported that score. Gangland is the case that found this: a
+// festival poster titled "Keep Quiet" at avg 3.334 from ONE vote beat the
+// English poster at 2.278 from four, and 3.333 turns up as the winning score
+// six times across a six-film library. It is the signature of n=1.
+//
+// THE SPECIFIC NUMBER IS PROVISIONAL. The principled claim is only that a mean
+// over one or two votes is not evidence; 3 is the smallest value in a stable
+// band, because 3 and 5 selected identically across all seventeen images
+// measured. That the band is stable is what makes the choice not knife-edge —
+// so if a larger library shows it is NOT stable, that is evidence to revisit
+// this, and specifically not a reason to tune the number until the answers
+// look nice.
+const minImageVotes = 3
+
+// imageLanguagePreference is the order of language tiers per image type, with
+// "" meaning language-neutral. Anything not listed sorts after everything
+// listed, so a film with only Japanese posters still gets one.
+//
+// TWO ORDERS, NOT THREE, and the inversion is the point. Measured across six
+// films: posters run 125 English to 22 neutral, backdrops 28 English to 154
+// neutral, logos 43 English to 1 neutral.
+//
+//   - Posters prefer English, because an English UI wants the title it can
+//     read, and neutral art is the reasonable second.
+//   - BACKDROPS INVERT. A backdrop is usually textless, and a language-tagged
+//     one usually has the title burned into it — wrong behind a detail screen
+//     where the client draws its own title. Under the old rule Congo took one
+//     of 5 English backdrops over 31 clean ones.
+//   - Logos take the SAME order as posters for the OPPOSITE reason: a logo is
+//     the title rendered as artwork, so it is language-specific by nature and
+//     a neutral one barely exists. They deliberately do not get a third
+//     ordering of their own — a neutral mark is safer than a
+//     definitely-wrong-language one, and inventing a third rule for a case
+//     occurring once in six films is complexity without evidence.
+//
+// "en" IS HARDCODED, and that is a real limitation rather than an oversight:
+// REELIX_METADATA_REGION is a region for certifications, not a language, so a
+// German deployment still gets English posters. Whoever adds a language
+// setting swaps the constant for it here and nowhere else — the tiering
+// structure is already the mechanism, so getting there is a one-line change
+// and not a rewrite of the selection.
+var imageLanguagePreference = map[string][]string{
+	domain.ImagePrimary:  {"en", ""},
+	domain.ImageLogo:     {"en", ""},
+	domain.ImageBackdrop: {"", "en"},
+}
+
 // bestImage picks one candidate deterministically.
 //
-// Highest community score, then most votes, then largest. Explicitly ordered
-// rather than taking the first entry, because TMDB does not document a sort and
-// depending on an undocumented one means the poster silently changes on a day
-// the API's ordering does. The tie-breaks matter more than the ranking here:
-// they are what make a re-run choose the same image, which is what "re-running
-// the pass downloads nothing" rests on.
-func bestImage(candidates []imageCandidate) (imageCandidate, bool) {
+// Language tier first, then a community score IF enough people voted, then the
+// largest source, then the file path. Explicitly ordered rather than taking the
+// first entry, because TMDB documents no sort and depending on an undocumented
+// one means the poster silently changes on a day the API's ordering does.
+//
+// The tie-breaks matter as much as the ranking: they are what make a re-run
+// choose the same image, which is what "re-running the pass downloads nothing"
+// rests on. The file path is the last resort and has to be there, or two
+// otherwise-identical images swap places between runs.
+func bestImage(candidates []imageCandidate, preference []string) (imageCandidate, bool) {
 	var best imageCandidate
 	found := false
 	for _, c := range candidates {
 		if c.FilePath == "" {
 			continue
 		}
-		if !found || betterImage(c, best) {
+		if !found || betterImage(c, best, preference) {
 			best, found = c, true
 		}
 	}
 	return best, found
 }
 
-func betterImage(a, b imageCandidate) bool {
-	switch {
-	case a.VoteAverage != b.VoteAverage:
-		return a.VoteAverage > b.VoteAverage
-	case a.VoteCount != b.VoteCount:
-		return a.VoteCount > b.VoteCount
-	case a.Width != b.Width:
-		return a.Width > b.Width
-	default:
-		// Last resort, and it has to be total: without it two identically
-		// rated images swap places between runs and the pass re-downloads on
-		// every pass.
-		return a.FilePath < b.FilePath
+// languageTier is a candidate's position in the preference list. Anything
+// unlisted sorts last, which is what makes the fallback total.
+func languageTier(c imageCandidate, preference []string) int {
+	lang := c.language()
+	for i, want := range preference {
+		if lang == want {
+			return i
+		}
 	}
+	return len(preference)
+}
+
+// betterImage reports whether a should be preferred over b.
+//
+// NOTE WHAT IS NOT COMPARED: vote_average between two candidates that both
+// fall short of minImageVotes. Ranking noise against noise is how the wrong
+// poster won in the first place, so below the threshold the score is not
+// consulted at all rather than used as a weak signal.
+func betterImage(a, b imageCandidate, preference []string) bool {
+	if ta, tb := languageTier(a, preference), languageTier(b, preference); ta != tb {
+		return ta < tb
+	}
+
+	// A well-supported score beats an unsupported one whatever the numbers say.
+	credibleA, credibleB := a.VoteCount >= minImageVotes, b.VoteCount >= minImageVotes
+	if credibleA != credibleB {
+		return credibleA
+	}
+	if credibleA && a.VoteAverage != b.VoteAverage {
+		return a.VoteAverage > b.VoteAverage
+	}
+
+	// Largest source. A property of the file rather than an opinion about it,
+	// and a larger original downscales better into the size bucket.
+	if a.Width != b.Width {
+		return a.Width > b.Width
+	}
+	return a.FilePath < b.FilePath
 }
 
 // FetchImage downloads one image's bytes.
