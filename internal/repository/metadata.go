@@ -49,6 +49,13 @@ func (r *MetadataRepository) Get(ctx context.Context, itemID uuid.UUID) (domain.
 	if out.Provenance, err = r.provenance(ctx, itemID); err != nil {
 		return domain.ItemMetadata{}, err
 	}
+
+	images, err := r.ImagesFor(ctx, []uuid.UUID{itemID})
+	if err != nil {
+		return domain.ItemMetadata{}, err
+	}
+	out.Images = images[itemID]
+
 	return out, nil
 }
 
@@ -198,9 +205,25 @@ func (r *MetadataRepository) ItemsNeedingMetadata(
 		   AND ($1::uuid IS NULL OR i.library_id = $1)`
 
 	if onlyMissing {
+		// "Never fetched" is now two questions, because fields and artwork
+		// arrive in the same pass and can be missing independently: an item
+		// identified before artwork existed has fields and no images, and must
+		// still be selected.
+		//
+		// An item is done when it has a metadata row AND a row for every image
+		// type — INCLUDING the negatives, since "the provider has no logo" is
+		// a stored answer rather than an absent one. That is what makes
+		// re-running the pass fetch nothing.
+		//
+		// A row whose FILE has gone cannot be seen from here. The reconcile
+		// sweep deletes those before this query runs, which turns a wiped
+		// cache directory back into the ordinary "no row" case rather than
+		// needing a predicate that can stat.
 		q += `
-		   AND NOT EXISTS (SELECT 1 FROM media_item_metadata m
-		                    WHERE m.media_item_id = i.id)`
+		   AND (NOT EXISTS (SELECT 1 FROM media_item_metadata m
+		                     WHERE m.media_item_id = i.id)
+		        OR (SELECT count(*) FROM media_item_images g
+		             WHERE g.media_item_id = i.id) < $3)`
 	}
 	q += `
 		 ORDER BY i.created_at
@@ -211,7 +234,12 @@ func (r *MetadataRepository) ItemsNeedingMetadata(
 		libraryFilter = &libraryID
 	}
 
-	rows, err := r.q.Query(ctx, q, libraryFilter, limit)
+	args := []any{libraryFilter, limit}
+	if onlyMissing {
+		args = append(args, len(domain.ImageTypes))
+	}
+
+	rows, err := r.q.Query(ctx, q, args...)
 	if err != nil {
 		return nil, mapError("listing items needing metadata", err)
 	}
@@ -266,6 +294,16 @@ func (r *MetadataRepository) MetadataFor(
 	for id, list := range genres {
 		m := out[id]
 		m.MediaItemID, m.Genres = id, list
+		out[id] = m
+	}
+
+	images, err := r.ImagesFor(ctx, itemIDs)
+	if err != nil {
+		return nil, err
+	}
+	for id, byType := range images {
+		m := out[id]
+		m.MediaItemID, m.Images = id, byType
 		out[id] = m
 	}
 	return out, nil
