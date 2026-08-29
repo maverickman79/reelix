@@ -21,6 +21,193 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-29 — the poster selection bug, and diagnosing from the symptom
+
+**Completed:**
+- Artwork selection: language tiers per image type, and TMDB's image score
+  gated on its vote count.
+- Found on the SK1: Gangland's poster was the Locarno festival variant titled
+  **"Keep Quiet"**. Fixed and verified live.
+
+**The identity was never wrong.** tmdb 1147610 is the right film, the same id
+the reference assigned, and the overview matches. Only the artwork choice was
+wrong — worth stating because a wrong-looking poster invites re-examining the
+match, which would have been time spent in the wrong place.
+
+### The symptom named ordering; the mechanism was vote_average at low n
+
+**This is the part worth carrying, and it is a lesson about diagnosis rather
+than about images.** The bug was reported as "we take whichever is first rather
+than preferring English". Measuring it found something else: the code already
+ordered by `vote_average`, and the festival poster won on that score.
+
+    lang=null  avg=3.334  n=1   1834x2751   <- stored
+    lang=en    avg=2.278  n=4   1787x2679
+    lang=en    avg=1.222  n=3   2000x3000
+    lang=null  avg=0.000  n=0   1372x2058
+
+The stored dimensions matched row one exactly, which is what confirmed it.
+
+**The two readings imply different fixes.** An ordering bug is fixed by sorting;
+this needed the estimator fixed. Had the symptom been taken at face value, the
+language tier alone would have been added — and it would have *appeared* to
+work, because on this input the tier also rejects that poster. The bug would
+have been closed with the real mechanism untouched, waiting for the first film
+whose bad poster happens to be English.
+
+> **A symptom can be consistent with more than one mechanism, and the fix that
+> matches the symptom is not always the fix that matches the cause.** Measure
+> before changing, even when the reported diagnosis is plausible — especially
+> then.
+
+### 3.333 is the signature of one vote
+
+Write this down, because anyone reading TMDB image scores will meet it.
+**TMDB publishes a RAW, UNSHRUNK MEAN per image.** A single 10/10 vote
+normalises to 3.333, and 3.333 outranks every image scoring below it however
+many people supported that score. It appears as the winning score **six times**
+across this six-film library.
+
+Vote counts on the winners, which is what decided the fix:
+
+| Film | winner's n |
+|---|---|
+| Fight Club posters | 52 |
+| Idiocracy posters | 12 |
+| Aang posters | 10 |
+| Congo posters | 6 |
+| **Gangland posters** | **1** |
+| **The Singers posters** | **1** |
+
+**So votes are GATED, not discarded**, and the SearchMovie precedent does not
+transfer. There, popularity ranking answers the *wrong question* — what did the
+user probably mean, rather than which film is this file. Here "which poster do
+people prefer" **is** the question being asked. The defect is the estimator at
+low n, not the question, so the estimator is what was fixed. Discarding votes
+outright would throw away n=52 to fix n=1, and it changed 15 of 17 images
+against 7 for the gate.
+
+### The threshold is provisional, and here is what would change it
+
+`minImageVotes = 3`. **The principled claim is only that a mean over one or two
+votes is not evidence.** The specific number is fitted to six films and is
+provisional.
+
+What makes it not knife-edge: **n>=3 and n>=5 selected identically across all
+seventeen images**, so the answer sits inside a stable band rather than balanced
+on a boundary.
+
+**If a larger library shows that band is NOT stable — if 3 and 5 start
+disagreeing — that is evidence to revisit the rule, and specifically not a
+licence to tune the number until the answers look nice.** Tuning a threshold
+against outcomes nobody can evaluate is how a magic number gets written down as
+if it were a finding. Shrinkage toward the pool mean was considered and rejected
+for the same reason: a tunable prior dressed as principle, for an aesthetic
+choice we cannot validate either way.
+
+### Two orderings, not three, and the evidence for each
+
+Language distribution across all six films:
+
+| | en | null | other |
+|---|---|---|---|
+| posters | 125 | 22 | 234 |
+| backdrops | 28 | **154** | 33 |
+| logos | 43 | **1** | 149 |
+
+- **Posters: en, then neutral, then anything.** An English UI wants a title it
+  can read; neutral art is the reasonable second.
+- **Backdrops INVERT: neutral, then en.** Neutral outnumbers English 154 to 28,
+  and a language-tagged backdrop usually has the title burned into it — wrong
+  behind a detail screen where the client draws its own title. Under the old
+  rule Congo took one of 5 English backdrops over 31 clean ones.
+- **Logos: the SAME order as posters, for the OPPOSITE reason.** A logo is the
+  title rendered as artwork, so it is language-specific by nature and a neutral
+  one barely exists — one instance in six films. They deliberately do **not**
+  get a third ordering: a neutral mark is safer than a definitely-wrong-language
+  one, and inventing a third rule for a case occurring once in six films is
+  complexity without evidence.
+
+### Dropping the language filter, which is the bigger fix
+
+`include_image_language=en,null` looked like a sensible narrowing and was not.
+**A film TMDB holds only Japanese posters for came back with NO posters at all**,
+and the pass recorded a negative — meaning that film shows no poster, forever,
+with nothing to indicate why.
+
+**That is a live gap for any non-English library rather than a hypothetical
+fallback tier**, and it is the strongest reason for the change. Every language
+is now fetched and the preference applied in Go. Measured on this library's most
+artwork-heavy film, dropping the filter takes the response from 43 KB to 74 KB —
+one request either way, and far inside the 4 MB read cap in `get`.
+
+### "en" is hardcoded, and getting out of that is one line
+
+`REELIX_METADATA_REGION` is a region for certifications, **not a language**, so a
+German deployment still gets English posters. Stated plainly because it is a
+real limitation rather than an oversight.
+
+**Whoever adds a language setting swaps the constant in
+`imageLanguagePreference` for it and touches nothing else.** The tiering
+structure is already the mechanism, so that work is a one-line change and not a
+rebuild of the selection logic — which is the point of recording it here rather
+than leaving it to be rediscovered as a rewrite.
+
+### The second retitle case, from the opposite direction
+
+**Two of six films on this library hit a naming mismatch, and they came from
+opposite directions:**
+
+- **The Legend of Aang.** The FILENAME carried a release title TMDB files as an
+  alternative. Fixed by searching alternative titles.
+- **Gangland.** The identity was right and the ARTWORK carried the alternative
+  title — a festival print under a different name.
+
+**One in three, on a six-film library.** The sample is far too small to
+generalise from, which is exactly why the ratio is recorded now rather than
+after somebody meets it at scale: on a nine-hundred-film library the same rate
+would be three hundred films, and the question of whether that is a matcher
+problem or an artwork problem is much cheaper to have already framed. They are
+different failures with different fixes, and only the first one is about
+matching.
+
+**Verified:**
+- `gofmt`, `go vet ./...` clean. Full suite green with a database and without.
+- **Fault-injected four ways**, each caught by a test that isolates its property:
+  the language tier, the vote gate, votes ignored entirely, and the restored
+  language filter.
+- **One of those injections found a masked test**, the same trap as the artwork
+  store's: the first low-vote test used the Gangland listing, where the loud
+  poster is language-neutral — so the language tier rejected it anyway and
+  removing the gate left the test GREEN. Rewritten with every candidate English,
+  which leaves the gate as the only thing that can decide. The Gangland test now
+  says in its own comment that it cannot localise a fault, because both rules
+  independently produce the right answer on that input.
+- **Live, and it matched the prediction exactly:** a dry run against real TMDB
+  forecast 7 of 17 images changing under the new rule; the full refresh changed
+  those 7 and no others. Gangland's poster moved from the Keep Quiet variant to
+  the English one. A second full refresh re-chose identically, and a default
+  pass afterwards fetched nothing.
+
+**In flight:**
+- Nothing.
+
+**Blocked:**
+- Nothing.
+
+**Handed to the operator:**
+- **Re-check the SK1 and jellyfin-web.** Gangland should now show an English
+  poster. Six other images changed as well — Congo's backdrop, three logos, and
+  all three of The Singers — so those are worth a glance too.
+- Note that this took a `?all=true` refresh. A default pass will not re-choose
+  artwork for items that already have rows, which is correct but does mean a
+  selection change never applies retroactively on its own.
+
+**Next step:**
+- Unchanged: **0.0.2 item 4, the Emby/Jellyfin watch-history importer.**
+
+---
+
 ## 2026-08-29 — artwork, and a test that could not see its own guard
 
 **Completed:**
