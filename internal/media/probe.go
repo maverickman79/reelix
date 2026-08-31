@@ -19,7 +19,41 @@ type ProbeResult struct {
 	// Duration is nil when ffprobe could not determine one.
 	Duration *float64
 	Streams  []ProbeStream
+
+	// Timing is what the invocation cost. Populated on every path that
+	// actually ran ffprobe, failures included: a probe that took two minutes
+	// to fail is exactly the one worth timing.
+	Timing ProbeTiming
 }
+
+// ProbeTiming is how long one ffprobe invocation took, and how much of that it
+// spent RUNNING rather than WAITING.
+//
+// THIS IS THE MEASUREMENT THAT DECIDES WHETHER CONCURRENCY WOULD HELP, and it
+// is the reason the two fields are carried separately rather than as one
+// duration. Wall-clock time alone cannot distinguish a scan that is slow
+// because ffprobe is working from one that is slow because ffprobe is blocked
+// on a disk, and those two want opposite answers:
+//
+//   - Wall ≈ CPU. The cost is process startup, dynamic linking and demuxing —
+//     per-file overhead. Running probes concurrently helps roughly linearly up
+//     to the core count.
+//   - Wall ≫ CPU. The process is parked in I/O. On a spinning array, several
+//     probes at once compete for ONE disk head, so concurrency makes the scan
+//     SLOWER. The answer there is a bigger readahead or fewer probes, not more
+//     of them.
+//
+// User and Sys come from the kernel's own rusage, which Go exposes on
+// ProcessState after Wait. They cost nothing to collect: no profiler, no extra
+// syscall, no sampling, and no measurement overhead to subtract back out.
+type ProbeTiming struct {
+	Wall time.Duration
+	User time.Duration
+	Sys  time.Duration
+}
+
+// CPU is the time the probe spent executing, in user space and in the kernel.
+func (t ProbeTiming) CPU() time.Duration { return t.User + t.Sys }
 
 // ProbeStream is one track within a container.
 //
@@ -102,21 +136,35 @@ func (p *Prober) Probe(ctx context.Context, path string) (ProbeResult, error) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	if err := cmd.Run(); err != nil {
+	started := time.Now()
+	runErr := cmd.Run()
+	timing := ProbeTiming{Wall: time.Since(started)}
+
+	// ProcessState is nil only when the process never started — a missing
+	// binary — in which case there is no rusage to read and no CPU time to
+	// report.
+	if cmd.ProcessState != nil {
+		timing.User = cmd.ProcessState.UserTime()
+		timing.Sys = cmd.ProcessState.SystemTime()
+	}
+
+	if runErr != nil {
 		if ctx.Err() != nil {
-			return ProbeResult{}, fmt.Errorf("%w after %s", ErrProbeTimeout, p.timeout)
+			return ProbeResult{Timing: timing}, fmt.Errorf("%w after %s", ErrProbeTimeout, p.timeout)
 		}
 		// ffprobe's stderr says what was actually wrong with the file, which
 		// is the whole diagnostic value; without it the operator sees only
 		// "exit status 1".
 		msg := strings.TrimSpace(stderr.String())
 		if msg == "" {
-			return ProbeResult{}, fmt.Errorf("ffprobe: %w", err)
+			return ProbeResult{Timing: timing}, fmt.Errorf("ffprobe: %w", runErr)
 		}
-		return ProbeResult{}, fmt.Errorf("ffprobe: %s", firstLine(msg))
+		return ProbeResult{Timing: timing}, fmt.Errorf("ffprobe: %s", firstLine(msg))
 	}
 
-	return parseProbeOutput(stdout.Bytes())
+	result, err := parseProbeOutput(stdout.Bytes())
+	result.Timing = timing
+	return result, err
 }
 
 // Version returns the probe binary's first version line, used at startup to

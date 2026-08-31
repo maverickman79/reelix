@@ -160,6 +160,19 @@ func (s *IdentityService) identify(ctx context.Context, jobID, libraryID uuid.UU
 		return 0, 0, err
 	}
 
+	// Counted rather than derived, because the alternative-title fan-out makes
+	// an item cost anywhere between one request and twelve. A pass measured on
+	// item count alone would say nothing about what it asked TMDB for.
+	started := time.Now()
+	requestTotal := 0
+	defer func() {
+		log.Info("identify pass cost",
+			slog.String(logging.KeyOperation, "identify"),
+			slog.Int("considered", matched+unmatched),
+			slog.Int("provider_requests", requestTotal),
+			slog.Int64("took_ms", time.Since(started).Milliseconds()))
+	}()
+
 	jobs := repository.NewJobRepository(s.pool)
 	repo := repository.NewIdentityRepository(s.pool)
 
@@ -175,7 +188,13 @@ func (s *IdentityService) identify(ctx context.Context, jobID, libraryID uuid.UU
 			log.Warn("could not record progress", slog.Any(logging.KeyError, err))
 		}
 
-		decision, err := s.decide(ctx, item)
+		itemStarted := time.Now()
+		decision, lookups, err := s.decide(ctx, item)
+
+		// One search, plus whatever the alternative-title fan-out cost. The
+		// cross-provider id lookup on a match is added below, so the number
+		// logged is what this item actually sent.
+		requests := 1 + lookups
 		switch {
 		case errors.Is(err, metadata.ErrRateLimited):
 			// Stop the pass rather than hammering a provider that has just
@@ -195,6 +214,7 @@ func (s *IdentityService) identify(ctx context.Context, jobID, libraryID uuid.UU
 
 		if decision.Matched {
 			ids := s.resolveIDs(ctx, decision.Candidate, log)
+			requests++
 			via := "primary"
 			if decision.ViaAlternativeTitle {
 				via = "alternative"
@@ -204,11 +224,14 @@ func (s *IdentityService) identify(ctx context.Context, jobID, libraryID uuid.UU
 				return matched, unmatched, err
 			}
 			matched++
+			requestTotal += requests
 			log.Info("item identified",
 				slog.String("item", item.Title),
 				slog.String("confidence", string(decision.Confidence)),
 				slog.String("matched_via", via),
-				slog.Any("ids", ids))
+				slog.Any("ids", ids),
+				slog.Int64("took_ms", time.Since(itemStarted).Milliseconds()),
+				slog.Int("provider_requests", requests))
 			continue
 		}
 
@@ -216,16 +239,24 @@ func (s *IdentityService) identify(ctx context.Context, jobID, libraryID uuid.UU
 			return matched, unmatched, err
 		}
 		unmatched++
+		requestTotal += requests
 		log.Info("item left unmatched",
 			slog.String("item", item.Title),
-			slog.String("reason", decision.Reason))
+			slog.String("reason", decision.Reason),
+			slog.Int64("took_ms", time.Since(itemStarted).Milliseconds()),
+			slog.Int("provider_requests", requests))
 	}
 
 	return matched, unmatched, nil
 }
 
 // decide asks the provider about one item and applies the matcher.
-func (s *IdentityService) decide(ctx context.Context, item domain.MediaItem) (metadata.Decision, error) {
+//
+// The second return is how many alternative-title lookups it cost. It is the
+// only variable part of an item's provider cost — a well-named film costs one
+// search and nothing else — so it is what a measurement of pass throughput has
+// to be able to see.
+func (s *IdentityService) decide(ctx context.Context, item domain.MediaItem) (metadata.Decision, int, error) {
 	query := metadata.MovieQuery{Title: item.Title}
 	if item.Year != nil {
 		query.Year = *item.Year
@@ -244,7 +275,7 @@ func (s *IdentityService) decide(ctx context.Context, item domain.MediaItem) (me
 
 	candidates, err := s.provider.SearchMovie(ctx, query)
 	if err != nil {
-		return metadata.Decision{}, err
+		return metadata.Decision{}, 0, err
 	}
 
 	decision := metadata.Match(query, candidates)
@@ -253,14 +284,14 @@ func (s *IdentityService) decide(ctx context.Context, item domain.MediaItem) (me
 	// that" can be a renamed release; "too many things were called that"
 	// cannot be fixed by finding more things called that.
 	if decision.Matched || decision.Decline != metadata.DeclineNoTitleMatch {
-		return decision, nil
+		return decision, 0, nil
 	}
 
-	enriched, err := s.withAlternativeTitles(ctx, query, candidates)
+	enriched, lookups, err := s.withAlternativeTitles(ctx, query, candidates)
 	if err != nil {
-		return metadata.Decision{}, err
+		return metadata.Decision{}, lookups, err
 	}
-	return metadata.Match(query, enriched), nil
+	return metadata.Match(query, enriched), lookups, nil
 }
 
 // withAlternativeTitles asks the provider for the other titles it publishes
@@ -295,24 +326,27 @@ func (s *IdentityService) decide(ctx context.Context, item domain.MediaItem) (me
 // The year window is what keeps that cost small: a candidate outside it can
 // never reach the exact or near tier whatever it is called, so filtering it out
 // discards nothing the matcher could have used and saves the request.
+// The int return is how many provider requests it actually made.
 func (s *IdentityService) withAlternativeTitles(
 	ctx context.Context, q metadata.MovieQuery, candidates []metadata.Candidate,
-) ([]metadata.Candidate, error) {
+) ([]metadata.Candidate, int, error) {
 	enriched := make([]metadata.Candidate, len(candidates))
 	copy(enriched, candidates)
 
+	lookups := 0
 	for _, i := range metadata.AlternativeTitleCandidates(q, candidates, altTitleLookupLimit) {
 		id := enriched[i].IDs[s.provider.Name()]
 		if id == "" {
 			continue
 		}
 
+		lookups++
 		titles, err := s.provider.AlternativeTitles(ctx, id)
 		if errors.Is(err, metadata.ErrRateLimited) {
 			// Propagated so the pass stops, exactly as a rate-limited search
 			// does. Continuing would keep asking a provider that has just said
 			// no.
-			return nil, err
+			return nil, lookups, err
 		}
 		if err != nil {
 			// One candidate we could not ask about is not a reason to abandon
@@ -325,7 +359,7 @@ func (s *IdentityService) withAlternativeTitles(
 		}
 		enriched[i].AltTitles = titles
 	}
-	return enriched, nil
+	return enriched, lookups, nil
 }
 
 // resolveIDs adds the other providers' ids for a matched candidate.

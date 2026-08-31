@@ -374,3 +374,40 @@ func TestProberVersionMissingBinary(t *testing.T) {
 		t.Errorf("error does not name the path: %v", err)
 	}
 }
+
+// TestProbeReportsTiming checks the wall and CPU figures are actually
+// populated, because a zero here would not fail anything — it would quietly
+// report every probe as free and make the concurrency question unanswerable.
+//
+// It asserts only that the numbers are present and self-consistent. Their
+// RATIO is the measurement (see ProbeTiming), and what that ratio comes out as
+// depends on the machine, the storage and the file, so it is not something a
+// test can pin without asserting a fact about the hardware it happens to run
+// on.
+func TestProbeReportsTiming(t *testing.T) {
+	binary := probeBinary(t)
+
+	// The ffprobe binary itself: a real file that ffprobe can open, read and
+	// then refuse, so the process does genuine work and genuine I/O without
+	// this test needing a media fixture.
+	prober := NewProber(binary, 30*time.Second)
+	_, err := prober.Probe(context.Background(), binary)
+	if err == nil {
+		t.Fatal("probing a non-media file returned no error")
+	}
+
+	// A failed probe still reports what it cost. That is deliberate: a file
+	// that takes the full timeout to give up is one of the more interesting
+	// numbers a scan produces, and timing only the successes would hide it.
+	result, _ := prober.Probe(context.Background(), binary)
+	if result.Timing.Wall <= 0 {
+		t.Errorf("wall time = %v, want > 0", result.Timing.Wall)
+	}
+	if result.Timing.CPU() <= 0 {
+		t.Errorf("CPU time = %v, want > 0 — rusage was not read", result.Timing.CPU())
+	}
+	if result.Timing.CPU() != result.Timing.User+result.Timing.Sys {
+		t.Errorf("CPU() = %v, want User+Sys = %v",
+			result.Timing.CPU(), result.Timing.User+result.Timing.Sys)
+	}
+}

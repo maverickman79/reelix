@@ -142,7 +142,13 @@ func (s *ScanService) run(ctx context.Context, jobID, libraryID uuid.UUID) {
 		slog.Int("probed", summary.probed),
 		slog.Int("skipped", summary.skipped),
 		slog.Int("failed", summary.failed),
-		slog.Duration("took", time.Since(started).Truncate(time.Millisecond)))
+		slog.Duration("took", time.Since(started).Truncate(time.Millisecond)),
+		// The split, so the shape of a scan is readable from the completion
+		// line alone without collecting the per-file debug lines.
+		slog.Int64("walk_ms", summary.walk.Milliseconds()),
+		slog.Int64("probe_wall_ms", summary.probeWall.Milliseconds()),
+		slog.Int64("probe_cpu_ms", summary.probeCPU.Milliseconds()),
+		slog.Int64("db_ms", summary.db.Milliseconds()))
 
 	if err := jobs.Finish(ctx, jobID, domain.JobStateCompleted, ""); err != nil {
 		log.Error("could not record job completion",
@@ -151,12 +157,40 @@ func (s *ScanService) run(ctx context.Context, jobID, libraryID uuid.UUID) {
 	}
 }
 
-// scanSummary counts what one scan did.
+// scanSummary counts what one scan did, and what each part of it cost.
+//
+// THE TIMINGS ARE SPLIT THREE WAYS ON PURPOSE, because "the scan took an hour"
+// does not say what to change. Walk, probe and database are separately
+// addressable — a walk-dominated scan wants fewer stat calls, a probe-dominated
+// one wants the wall-versus-CPU question in media.ProbeTiming answered before
+// anybody reaches for concurrency, and a database-dominated one wants the
+// per-file transaction batched.
 type scanSummary struct {
 	discovered int
 	probed     int
 	skipped    int
 	failed     int
+
+	// walk is the directory traversal alone, before any probe runs. On a
+	// spinning array with thousands of release folders this can be the
+	// expensive half, and it is invisible in a single total.
+	walk time.Duration
+	// probeWall and probeCPU aggregate media.ProbeTiming across every file
+	// ffprobe actually ran against, failures included. Their RATIO is the
+	// answer to whether the scan is I/O-bound or process-bound.
+	probeWall time.Duration
+	probeCPU  time.Duration
+	// db is time inside the per-file transaction.
+	db time.Duration
+}
+
+// fileTiming is what one file cost.
+type fileTiming struct {
+	// probed reports whether ffprobe ran; an unchanged file is persisted
+	// without one.
+	probed bool
+	probe  media.ProbeTiming
+	db     time.Duration
 }
 
 // scan walks the library, probes what needs probing, and persists everything.
@@ -185,15 +219,18 @@ func (s *ScanService) scan(
 		roots[i] = p.Path
 	}
 
+	walkStarted := time.Now()
 	found, err := media.Scan(ctx, roots)
 	if err != nil {
 		return summary, fmt.Errorf("walking library: %w", err)
 	}
+	summary.walk = time.Since(walkStarted)
 	summary.discovered = len(found)
 
 	log.Info("walk complete",
 		slog.String(logging.KeyOperation, "scan"),
-		slog.Int("files", len(found)))
+		slog.Int("files", len(found)),
+		slog.Duration("took", summary.walk.Truncate(time.Millisecond)))
 
 	if err := jobs.UpdateProgress(ctx, jobID, 0, len(found), ""); err != nil {
 		return summary, err
@@ -216,7 +253,27 @@ func (s *ScanService) scan(
 			lastProgress = time.Now()
 		}
 
-		probed, err := s.persistFile(ctx, repo, libraryID, f)
+		timing, err := s.persistFile(ctx, repo, libraryID, f)
+
+		summary.db += timing.db
+		if timing.probed {
+			summary.probeWall += timing.probe.Wall
+			summary.probeCPU += timing.probe.CPU()
+
+			// One line per probed file, at debug so an ordinary scan does not
+			// write a line per film. Everything needed to attribute the cost
+			// is here: size, because a seek-bound scan does not care about it
+			// and a throughput-bound one does; and wall against CPU, which is
+			// the discriminator itself. See media.ProbeTiming.
+			log.Debug("file probed",
+				slog.String(logging.KeyOperation, "scan"),
+				slog.String("path", f.Path),
+				slog.Int64("size_bytes", f.SizeBytes),
+				slog.Int64("probe_wall_ms", timing.probe.Wall.Milliseconds()),
+				slog.Int64("probe_cpu_ms", timing.probe.CPU().Milliseconds()),
+				slog.Int64("db_ms", timing.db.Milliseconds()))
+		}
+
 		switch {
 		case err != nil:
 			summary.failed++
@@ -224,7 +281,7 @@ func (s *ScanService) scan(
 				slog.String(logging.KeyOperation, "scan"),
 				slog.String("path", f.Path),
 				slog.String(logging.KeyError, err.Error()))
-		case probed:
+		case timing.probed:
 			summary.probed++
 		default:
 			summary.skipped++
@@ -239,21 +296,25 @@ func (s *ScanService) scan(
 
 // persistFile records one discovered file, probing it when needed.
 //
-// Returns whether the file was probed on this pass; an already-probed,
-// unchanged file is persisted but not re-probed.
+// Returns what the file cost. An already-probed, unchanged file is persisted
+// but not re-probed, and reports probed=false. A probe that FAILED still
+// reports its timing — a file that took the full two-minute timeout to give up
+// is one of the more interesting numbers a scan produces.
 func (s *ScanService) persistFile(
 	ctx context.Context,
 	repo *repository.MediaRepository,
 	libraryID uuid.UUID,
 	f media.DiscoveredFile,
-) (bool, error) {
+) (fileTiming, error) {
+	var timing fileTiming
+
 	existing, err := repo.GetFileByPath(ctx, f.Path)
 	switch {
 	case err == nil:
 	case errors.Is(err, repository.ErrNotFound):
 		existing = domain.MediaFile{}
 	default:
-		return false, err
+		return timing, err
 	}
 
 	// Skip the probe when this file has already been probed and has not
@@ -267,8 +328,13 @@ func (s *ScanService) persistFile(
 	var probe media.ProbeResult
 	if needsProbe {
 		probe, err = s.prober.Probe(ctx, f.Path)
+		// Recorded before the error check: a failed probe still consumed the
+		// time, and a scan whose cost is dominated by files that fail is
+		// exactly the diagnosis that would be lost by only timing successes.
+		timing.probed = true
+		timing.probe = probe.Timing
 		if err != nil {
-			return false, err
+			return timing, err
 		}
 	}
 
@@ -301,6 +367,7 @@ func (s *ScanService) persistFile(
 	// One transaction per file: the item, the file, and its streams appear
 	// together or not at all. A file recorded without its streams would look
 	// probed to the next scan while carrying no playable track information.
+	dbStarted := time.Now()
 	err = db.InTx(ctx, s.pool, func(q db.Querier) error {
 		tx := repository.NewMediaRepository(q)
 
@@ -359,11 +426,12 @@ func (s *ScanService) persistFile(
 		}
 		return tx.ReplaceStreams(ctx, file.ID, streams)
 	})
+	timing.db = time.Since(dbStarted)
 	if err != nil {
-		return false, err
+		return timing, err
 	}
 
-	return needsProbe, nil
+	return timing, nil
 }
 
 // nonEmpty maps "" to nil, so an absent value is null rather than an empty

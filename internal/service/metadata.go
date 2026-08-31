@@ -178,6 +178,7 @@ func (s *MetadataService) run(ctx context.Context, jobID, libraryID uuid.UUID, a
 		return
 	}
 
+	started := time.Now()
 	result, err := s.refresh(ctx, jobID, libraryID, all, log)
 	if err != nil {
 		log.Error("metadata refresh failed",
@@ -194,7 +195,11 @@ func (s *MetadataService) run(ctx context.Context, jobID, libraryID uuid.UUID, a
 		slog.Int("fetched", result.fetched),
 		slog.Int("images_downloaded", result.imagesDownloaded),
 		slog.Int("images_cleared", result.imagesCleared),
-		slog.Int("fields_skipped_locked", result.skippedLocked))
+		slog.Int("fields_skipped_locked", result.skippedLocked),
+		// One provider request per film plus one CDN download per image, so
+		// fetched and images_downloaded together are the pass's request count
+		// and this is what it cost to make them.
+		slog.Int64("took_ms", time.Since(started).Milliseconds()))
 
 	if err := jobs.Finish(ctx, jobID, domain.JobStateCompleted, ""); err != nil {
 		log.Error("could not record completion", slog.Any(logging.KeyError, err))
@@ -317,6 +322,7 @@ func (s *MetadataService) refreshBatch(ctx context.Context, a refreshBatchArgs) 
 		if err := jobs.UpdateProgress(ctx, a.jobID, a.processed+i+1, a.total, item.Title); err != nil {
 			log.Warn("could not record progress", slog.Any(logging.KeyError, err))
 		}
+		itemStarted := time.Now()
 
 		identity, err := identities.Get(ctx, item.ID)
 		if err != nil {
@@ -365,7 +371,10 @@ func (s *MetadataService) refreshBatch(ctx context.Context, a refreshBatchArgs) 
 		log.Info("metadata fetched",
 			slog.String("item", item.Title),
 			slog.Int("images_downloaded", downloaded),
-			slog.Int("fields_skipped_locked", skipped+imagesSkipped))
+			slog.Int("fields_skipped_locked", skipped+imagesSkipped),
+			// Excludes the inter-item pause, so this is the provider's latency
+			// plus the image bytes rather than Reelix's own pacing.
+			slog.Int64("took_ms", time.Since(itemStarted).Milliseconds()))
 	}
 
 	return len(a.items), nil
