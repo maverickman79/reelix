@@ -23,6 +23,8 @@ non-trivial change.
 | `docs/constitution.md` | Before any architectural or cross-cutting change |
 | `docs/mvp-0.0.2.md` | Before implementing anything in the current milestone |
 | `docs/compat-capture.md` | Before touching the Jellyfin compatibility layer |
+| `docs/unraid.md` | Before deploying anywhere that is not the development VPS |
+| `docs/measurement-0.0.2.md` | Before changing anything for performance, and before trusting a number about one |
 
 ---
 

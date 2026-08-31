@@ -21,6 +21,139 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-31 — Unraid deployment, and the measurement the numbers have to answer
+
+**Completed:**
+
+- **`refresh-metadata?all=true` could never see past its first 200 films.**
+  `ItemsNeedingMetadata` was a `LIMIT` over a fixed `ORDER BY` with no offset
+  and no cursor, and `refresh()` called it once. With `all=true` there is no
+  "needs work" predicate, so fetching an item does not remove it from the
+  selection set — every run re-selected the same first batch and the 201st film
+  was unreachable by any number of runs. The default pass concealed it rather
+  than escaping it: fetching an item *does* remove it from the "never fetched"
+  set, so a second run moved on by itself. **That is why a six-film library
+  never showed the fault.**
+
+  Fixed first, as its own commit, because it is a precondition of the
+  measurement rather than scope creep — `all=true` is the instrument for "one
+  metadata refresh" over a library larger than a batch, and it did not work. It
+  also compounds the 2026-08-31 finding that `all=true` is the *only* refresh
+  reaching an already-fetched item: correcting one field on film 201 was
+  impossible.
+
+  Keyset pagination on `(created_at, id)` — the pair, because `created_at` comes
+  from a microsecond-truncated clock and two items from one scan can share a
+  value; item ids are UUIDv7, so the pair is a total order agreeing with
+  insertion order. Progress gained a count taken once before the first batch,
+  or a five-film library reports "1 of 2" three times.
+
+  **The tests shrink the batch rather than growing the library.** At the real
+  size of 200 the obvious test needs 200 films to say anything, and below that
+  it passes against the broken code — the exact shape of test that let this
+  survive. `SetBatchForTest` lives in `export_test.go`, so it is compiled into
+  the test binary only. Verified failing against the pre-fix behaviour at 2 of 5
+  films before being fixed.
+
+- **Instrumentation for the measurement.** `media.ProbeTiming` carries wall AND
+  CPU per ffprobe invocation, from the kernel's own rusage via `wait4` — no
+  profiler, no sampling, nothing to subtract back out. The split is the whole
+  point: wall alone cannot distinguish a scan that is slow because ffprobe is
+  working from one that is slow because ffprobe is blocked on a disk, and those
+  want opposite answers. Timing is recorded on the failure paths too, because a
+  file that takes the full two-minute timeout to give up is one of the more
+  interesting numbers a scan produces.
+
+  The scan splits its cost three ways — walk, probe, database. The walk was
+  previously logged with a file count and *no duration at all*, despite
+  plausibly being the expensive half on thousands of release folders. Identify
+  counts provider **requests** rather than items, because the alternative-title
+  fan-out makes one item cost between 1 and 12 of them.
+
+- **Deployment: the canonical stack now pulls rather than builds.** Building
+  moved to `docker-compose.build.yml`, following the override convention
+  `docker-compose.test.yml` already set. A host that builds its own image
+  resolves its own Go patch and its own `jellyfin-ffmpeg7` on whatever day it
+  builds, so it is not running the artifact that was tested — which matters most
+  precisely when the deployment exists to produce measurements.
+
+  Three things were VPS-specific and stopped being so: the hardcoded Tailscale
+  bind address (now `REELIX_HTTP_BIND`, with **no default and a `:?` guard**,
+  because a default of `0.0.0.0` would silently publish the VPS the first time
+  somebody forgot to set it); the uid (image runs as 1000, Unraid needs 99:100,
+  overridden at the compose layer because it is a fact about the host's
+  filesystem); and the unpullable `reelix/server` image name.
+
+  `docker-compose.unraid.yml` swaps named volumes for appdata bind mounts.
+  Unraid operators are routinely advised to delete and recreate Docker's storage
+  as a first troubleshooting step, and a named volume goes with it — taking the
+  database and the whole identified library along.
+
+- **`docs/unraid.md`** (deployment) and **`docs/measurement-0.0.2.md`** (method,
+  failure audit, rate limits) written.
+
+**Baseline captured, VPS, real six-film library, warm cache:** wall/cpu 1.00 to
+1.25, 40 to 110 ms per file, and **independent of file size** — 70.8 GB probes
+as fast as 1.6 GB, because ffprobe reads headers rather than content. Same code
+and same binary on Unraid, so any divergence there is the storage. A scan whose
+cost tracks file size is measuring something other than ffprobe.
+
+**Two silent-failure findings, recorded because they share one shape.**
+
+Both present as *"nothing needed doing"* rather than as an error, which is the
+same class as the query-parameter credential case: the wrong outcome is
+indistinguishable from a right one at the point somebody would look.
+
+- **A wrong or expired TMDB key produces a `completed` pass.** A 401 hits
+  `decide`'s generic error path, so the pass warns per item and finishes with
+  `matched=0, unmatched=0`. A dead key looks exactly like a library with nothing
+  left to identify.
+- **A provider hiccup returning `200` with an empty `results` array is recorded
+  `unmatched` permanently.** `Pending` selects only `pending`, so it is never
+  retried; it needs a manual `Reset`. At the database it is indistinguishable
+  from a film TMDB genuinely does not have.
+
+**In flight:**
+- Nothing. The Unraid deployment and the three measured runs are the next
+  session's work; the method is written and the instrumentation is in.
+
+**Blocked:**
+- Nothing.
+
+**Next step:**
+- Deploy to Unraid per `docs/unraid.md`, point a library at a few hundred real
+  films, and run the sequence in `docs/measurement-0.0.2.md`. Then decide about
+  concurrency **with the wall-versus-CPU ratio in hand**, not before.
+
+**Expected first change AFTER the numbers, deliberately not done now:**
+
+- **A scan cannot fail.** There is no failure ratio at which it reports failure:
+  900 files discovered and 900 failing to probe finishes as a `completed` job
+  with `failed=900` in a log line nobody is reading. Deliberate at the level of
+  one file — "one corrupt file must not cost an operator the other nine hundred"
+  is right and should stay — but nothing supplies the other end, the threshold
+  above which the pass concludes the problem is not the files. It matters more
+  on real hardware than anything about throughput, because it is the difference
+  between a mount that dropped mid-scan announcing itself and one that quietly
+  indexes a fraction of a library and calls it done. Held back so it does not
+  compete for attention with the numbers.
+
+**Decisions made:**
+- **The registry over building on the box.** Both work; the registry keeps the
+  measured artifact and the running artifact identical, which is worth more than
+  saving a push at the exact moment variables are being removed rather than
+  added.
+- **Concurrency, checkpointing and rate limiting were all left alone**, as
+  scoped. The wall-versus-CPU ratio decides whether concurrency is a help or a
+  harm, and on a spinning array it can genuinely be a harm — that is not a
+  question to answer by writing the code first.
+- **`providerPause` is not the problem and was not touched.** At 4 items/s a
+  10,000-film identify pass is ~42 minutes. TMDB's published ceiling is ~40
+  req/s (the legacy 40-per-10s was disabled in 2019), and the pause sits far
+  under it. The batch cap and the failure handling are what bite at scale.
+
+---
+
 ## 2026-08-31 — the lock released, and a stale-state audit
 
 **Completed:**
