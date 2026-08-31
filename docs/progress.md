@@ -21,6 +21,98 @@ stay scannable. Prune entries older than the current minor version into
 
 ---
 
+## 2026-08-31 — the lock released, and a stale-state audit
+
+**Completed:**
+- Fight Club's `overview` unlocked and re-fetched. It carried
+  `MY CORRECTED OVERVIEW` from the 2026-08-28 lock test; it now holds TMDB's
+  real text, **byte-identical to the reference instance's**.
+- `DELETE /items/{id}/metadata/overview/lock` then
+  `POST /libraries/{id}/refresh-metadata?all=true`. Job completed 6/6 in 2.4s,
+  and Fight Club logged `fields_skipped_locked=0` — down from 1 in every pass
+  since the lock was set, which is the confirmation that it is gone.
+- **The database now holds no locked field and no `manual` provenance row at
+  all.** Every one of the 47 rows is `tmdb`/unlocked.
+
+**Two things the request assumed that were not so:**
+
+- **There is no per-item refresh, and this one belongs on the list.**
+  `refresh-metadata` is library-wide. Its default selects only items with no
+  metadata row or missing image rows, so Fight Club would not have been picked
+  up; `?all=true` is the only form that reaches it, and it re-fetched all six
+  films and re-downloaded all 17 images to correct one field on one of them.
+
+  **Correcting a single film costs a whole-library re-fetch.** At six films
+  that is 2.4 seconds and six TMDB calls, which is why it has never been felt.
+  At a few thousand it is a rate-limited pass measured in hours, plus every
+  image re-downloaded, to fix one overview — and the cost lands on whoever is
+  least able to wait for it, since the reason to correct a field by hand is
+  usually that somebody is looking at it. **Worth building before the Unraid
+  work rather than discovering it there**, where real library sizes arrive and
+  the operator is not the person who wrote the endpoint.
+- **The last full re-fetch was 2026-08-29 05:47, not the night before this
+  session** — the lock survived ~54 hours of nothing running, not a fresh pass.
+
+**Stale-state audit, the rest of the database: clean.** Every text column in
+all 18 tables swept against a synthetic-value pattern. `MY CORRECTED OVERVIEW`
+was the only real hit; the three survivors are false positives (the Idiocracy
+and Singers overviews contain "test"/"sample" as genuine TMDB prose, and
+`channel_layout_sample_rate` is a migration name). `playback_state`'s six rows
+are real client testing, not injected values.
+
+**Reference instance (:8096): no test values, and it must stay that way.** No
+locked fields, no hand-edited overviews. Its user *is* named `test` and its
+`UserData` carries the Step 0 capture's play counts — that is the fixture
+baseline, not debris. Cleaning it would cost the comparability that makes a
+new capture diffable. The only post-capture writes are the server's own churn.
+
+**Probe instance (:8098): REMOVED.** It was living on borrowed storage — its
+`/config`, `/cache` and `/media2` were bind-mounted out of a **previous
+session's scratchpad** (`/tmp/claude-1000/-home-steven-reelix/4b327be3-…`),
+so a routine cleanup of that directory would have pulled the config, library
+and two probe media files out from under a running container. Disposable by
+design, so it was removed whole rather than repaired: `docker rm -f
+reelix-jellyfin-probe`. Its stale config directory remains under `/tmp` and
+needs nothing. **If a pristine 10.11.8 instance is wanted again, build it with
+mounts outside a session scratchpad**, which is the only thing that went wrong
+with this one.
+
+**Uptimes, corrected:** jellyfin-ref 85h, jellyfin-probe 84h, postgres 95h,
+reelix-app 53h — not the ~31h assumed.
+
+**One admin token was rotated, and the mechanism is worth noting.** A token
+issued for this session's admin calls ended up in a transcript, so it was
+revoked. **There is no revoke path** — no logout route, and `TokenRepository`
+offers only `DeleteExpired` and `DeleteForUser` — so a single leaked token can
+only be killed by deleting its row by `token_hash` in SQL. Verified: the token
+now answers 401. Note the exposure window that was closed: `TokenLifetime` is
+**30 days**, so a leaked token is live for a month unless somebody goes and
+deletes it by hand. **A revoke-one-token path is the missing piece**, and it
+pairs with the already-noted absence of any sweep for expired rows.
+
+**In flight:**
+- Nothing.
+
+**Blocked:**
+- Nothing.
+
+**Next step:**
+- 0.0.2 item 4, the Emby/Jellyfin watch-history importer. Unchanged.
+
+**Decisions made:**
+- **The reference instance was left entirely alone.** Its `test` user and
+  play counts are load-bearing for the fixtures — cleaning them would cost the
+  comparability that makes a new capture diffable, which is worth more than a
+  tidy-looking database. The probe was the opposite case and went whole.
+- **The probe was removed rather than re-mounted.** Repairing the mounts would
+  have preserved state that is throwaway by definition; the instance is cheap
+  to rebuild and its only defect was where it stored itself.
+- **The audit login to the probe left a footprint** — a device row named
+  `audit` and a refreshed `LastLoginDate` — which is now moot, since the
+  instance it lived in no longer exists.
+
+---
+
 ## 2026-08-29 — the poster selection bug, and diagnosing from the symptom
 
 **Completed:**
