@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"time"
 	"uuid"
 
@@ -185,56 +186,98 @@ func (r *MetadataRepository) SetLocked(ctx context.Context, itemID uuid.UUID, fi
 	return mapError("setting field lock", err)
 }
 
-// ItemsNeedingMetadata returns identified items for the refresh pass.
+// ItemCursor marks the last item a batch returned, so the next batch can
+// resume after it.
 //
-// onlyMissing selects items that have never been fetched, which is the default
-// because a full re-fetch is one provider request per film in the library. On
-// a large library that is a cost somebody should choose rather than discover.
-func (r *MetadataRepository) ItemsNeedingMetadata(
-	ctx context.Context, libraryID uuid.UUID, onlyMissing bool, limit int,
-) ([]domain.MediaItem, error) {
-	// Only identified items: a metadata fetch needs a provider id, and an
-	// unidentified film has none. A manual identity counts — somebody said
-	// which film it is, and that is exactly as usable as a matched one.
-	q := `
-		SELECT i.id, i.library_id, i.kind, i.title, i.year, i.source_path,
-		       i.created_at, i.updated_at
+// The pair, not the timestamp alone: created_at is written per row from a
+// microsecond-truncated clock, so two items inserted by the same scan CAN share
+// one. A cursor on the timestamp alone would then either skip the second item
+// or return the first one forever, depending on which way the comparison went.
+// Media item ids are UUIDv7 and so are themselves time-ordered, which makes
+// (created_at, id) a total order that agrees with insertion order.
+type ItemCursor struct {
+	CreatedAt time.Time
+	ID        uuid.UUID
+}
+
+// identifiedItemsFrom selects the items a metadata pass may consider.
+//
+// Only identified items: a metadata fetch needs a provider id, and an
+// unidentified film has none. A manual identity counts — somebody said which
+// film it is, and that is exactly as usable as a matched one.
+//
+// $1 is the library filter.
+const identifiedItemsFrom = `
 		  FROM media_items i
 		  JOIN media_item_identity d ON d.media_item_id = i.id
 		 WHERE d.status IN ('matched', 'manual')
 		   AND ($1::uuid IS NULL OR i.library_id = $1)`
 
-	if onlyMissing {
-		// "Never fetched" is now two questions, because fields and artwork
-		// arrive in the same pass and can be missing independently: an item
-		// identified before artwork existed has fields and no images, and must
-		// still be selected.
-		//
-		// An item is done when it has a metadata row AND a row for every image
-		// type — INCLUDING the negatives, since "the provider has no logo" is
-		// a stored answer rather than an absent one. That is what makes
-		// re-running the pass fetch nothing.
-		//
-		// A row whose FILE has gone cannot be seen from here. The reconcile
-		// sweep deletes those before this query runs, which turns a wiped
-		// cache directory back into the ordinary "no row" case rather than
-		// needing a predicate that can stat.
-		q += `
+// missingMetadataClause is the "never fetched" predicate, with %d standing in
+// for the parameter carrying the image type count.
+//
+// "Never fetched" is two questions, because fields and artwork arrive in the
+// same pass and can be missing independently: an item identified before artwork
+// existed has fields and no images, and must still be selected.
+//
+// An item is done when it has a metadata row AND a row for every image type —
+// INCLUDING the negatives, since "the provider has no logo" is a stored answer
+// rather than an absent one. That is what makes re-running the pass fetch
+// nothing.
+//
+// A row whose FILE has gone cannot be seen from here. The reconcile sweep
+// deletes those before this query runs, which turns a wiped cache directory
+// back into the ordinary "no row" case rather than needing a predicate that can
+// stat.
+//
+// It is a single constant shared by the listing and the count so that the total
+// a job reports can never describe a different set from the one it walks.
+const missingMetadataClause = `
 		   AND (NOT EXISTS (SELECT 1 FROM media_item_metadata m
 		                     WHERE m.media_item_id = i.id)
 		        OR (SELECT count(*) FROM media_item_images g
-		             WHERE g.media_item_id = i.id) < $3)`
+		             WHERE g.media_item_id = i.id) < $%d)`
+
+// ItemsNeedingMetadata returns one batch of identified items for the refresh
+// pass, resuming after the cursor.
+//
+// onlyMissing selects items that have never been fetched, which is the default
+// because a full re-fetch is one provider request per film in the library. On
+// a large library that is a cost somebody should choose rather than discover.
+//
+// THE CURSOR IS WHAT MAKES A FULL REFRESH REACH THE WHOLE LIBRARY. Without one
+// this query was LIMIT with no offset over a fixed ordering, so onlyMissing=false
+// — the ?all=true refresh — selected the same first `limit` items on every run
+// and could never reach item limit+1. The default pass concealed it, because
+// fetching an item removes it from the selection set and so the next run moves
+// on by itself; a full refresh removes nothing, so it stood still. See
+// TestAFullRefreshReachesItemsBeyondOneBatch.
+func (r *MetadataRepository) ItemsNeedingMetadata(
+	ctx context.Context, libraryID uuid.UUID, onlyMissing bool, limit int, after *ItemCursor,
+) ([]domain.MediaItem, error) {
+	q := `
+		SELECT i.id, i.library_id, i.kind, i.title, i.year, i.source_path,
+		       i.created_at, i.updated_at` + identifiedItemsFrom + `
+		   AND ($3::timestamptz IS NULL OR (i.created_at, i.id) > ($3, $4::uuid))`
+
+	if onlyMissing {
+		q += fmt.Sprintf(missingMetadataClause, 5)
 	}
+
+	// The ORDER BY must match the cursor comparison exactly, or a batch can
+	// skip an item that the previous batch's last row already sorted past.
 	q += `
-		 ORDER BY i.created_at
+		 ORDER BY i.created_at, i.id
 		 LIMIT $2`
 
-	var libraryFilter *uuid.UUID
-	if libraryID != (uuid.UUID{}) {
-		libraryFilter = &libraryID
+	var cursorAt *time.Time
+	var cursorID *uuid.UUID
+	if after != nil {
+		at, id := after.CreatedAt, after.ID
+		cursorAt, cursorID = &at, &id
 	}
 
-	args := []any{libraryFilter, limit}
+	args := []any{libraryFilter(libraryID), limit, cursorAt, cursorID}
 	if onlyMissing {
 		args = append(args, len(domain.ImageTypes))
 	}
@@ -255,6 +298,39 @@ func (r *MetadataRepository) ItemsNeedingMetadata(
 		items = append(items, m)
 	}
 	return items, mapError("listing items needing metadata", rows.Err())
+}
+
+// CountItemsNeedingMetadata returns how many items a pass has to get through.
+//
+// Taken once, before the first batch, so a job's progress total describes the
+// work as it stood at the start. With onlyMissing the set shrinks as the pass
+// succeeds, which is what makes a finishing count below the total meaningful
+// rather than wrong: it is the number of items the pass could not fetch.
+func (r *MetadataRepository) CountItemsNeedingMetadata(
+	ctx context.Context, libraryID uuid.UUID, onlyMissing bool,
+) (int, error) {
+	q := `SELECT count(*)` + identifiedItemsFrom
+	args := []any{libraryFilter(libraryID)}
+	if onlyMissing {
+		q += fmt.Sprintf(missingMetadataClause, 2)
+		args = append(args, len(domain.ImageTypes))
+	}
+
+	var n int
+	if err := r.q.QueryRow(ctx, q, args...).Scan(&n); err != nil {
+		return 0, mapError("counting items needing metadata", err)
+	}
+	return n, nil
+}
+
+// libraryFilter renders the zero UUID as a SQL NULL, meaning "every library".
+// Passing the zero value straight through would filter for a library that
+// cannot exist and return nothing.
+func libraryFilter(libraryID uuid.UUID) *uuid.UUID {
+	if libraryID == (uuid.UUID{}) {
+		return nil
+	}
+	return &libraryID
 }
 
 // MetadataFor loads metadata for many items at once, for a listing.

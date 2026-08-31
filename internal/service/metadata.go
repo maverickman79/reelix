@@ -17,6 +17,10 @@ import (
 )
 
 // metadataBatch bounds how many items one refresh claims at a time.
+//
+// At a time, not in total: the pass walks batch after batch until the library
+// is exhausted. The bound is on memory and on how much a single failed query
+// costs, never on how far the pass gets.
 const metadataBatch = 200
 
 // MetadataService fetches and edits the managed metadata fields.
@@ -25,6 +29,10 @@ type MetadataService struct {
 	provider metadata.Provider
 	images   *artwork.Store
 	log      *slog.Logger
+
+	// batch is metadataBatch, overridable from a test so the batch boundary
+	// can be crossed without standing up two hundred films. See export_test.go.
+	batch int
 }
 
 // NewMetadataService returns a service backed by pool, provider and an artwork
@@ -37,6 +45,7 @@ func NewMetadataService(
 		provider: provider,
 		images:   artwork.NewStore(cacheDir),
 		log:      logging.Component(log, "metadata"),
+		batch:    metadataBatch,
 	}
 }
 
@@ -230,25 +239,88 @@ func (s *MetadataService) refresh(
 	}
 	result.imagesCleared = cleared
 
-	items, err := repo.ItemsNeedingMetadata(ctx, libraryID, !all, metadataBatch)
+	// The total is taken once, before the first batch, so progress describes
+	// the whole pass rather than whichever batch is in hand.
+	total, err := repo.CountItemsNeedingMetadata(ctx, libraryID, !all)
 	if err != nil {
 		return result, err
 	}
 
-	for i, item := range items {
-		if err := ctx.Err(); err != nil {
+	// BATCH AFTER BATCH, resuming from a cursor, until the library is
+	// exhausted. A single LIMIT here was the bug: ?all=true selects a set that
+	// fetching does not shrink, so without a cursor it re-fetched the same
+	// first batch on every run and item batch+1 was unreachable.
+	var cursor *repository.ItemCursor
+	processed := 0
+
+	for {
+		items, err := repo.ItemsNeedingMetadata(ctx, libraryID, !all, s.batch, cursor)
+		if err != nil {
 			return result, err
 		}
-		if i > 0 {
+		if len(items) == 0 {
+			break
+		}
+
+		// Advance the cursor before the work rather than after it. A failed
+		// item must not be reconsidered by the next batch of THIS pass — it
+		// would be fetched twice on the way to failing twice — and leaving it
+		// in the set is already how it gets retried by the NEXT pass.
+		last := items[len(items)-1]
+		cursor = &repository.ItemCursor{CreatedAt: last.CreatedAt, ID: last.ID}
+
+		done, err := s.refreshBatch(ctx, refreshBatchArgs{
+			items: items, repo: repo, identities: identities, jobs: jobs,
+			jobID: jobID, all: all, total: total, processed: processed,
+			result: &result, log: log,
+		})
+		processed += done
+		if err != nil {
+			return result, err
+		}
+	}
+
+	return result, nil
+}
+
+// refreshBatchArgs is one batch's worth of context for refreshBatch.
+type refreshBatchArgs struct {
+	items      []domain.MediaItem
+	repo       *repository.MetadataRepository
+	identities *repository.IdentityRepository
+	jobs       *repository.JobRepository
+	jobID      uuid.UUID
+	all        bool
+	total      int
+	processed  int
+	result     *refreshResult
+	log        *slog.Logger
+}
+
+// refreshBatch fetches one batch, returning how many items it got through.
+//
+// The count comes back even on the error paths, so the caller's running
+// progress stays truthful about a pass that stopped part way — a rate limit
+// arriving on the third item of the second batch must not report the whole
+// batch as done.
+func (s *MetadataService) refreshBatch(ctx context.Context, a refreshBatchArgs) (int, error) {
+	repo, identities, jobs, log := a.repo, a.identities, a.jobs, a.log
+	result := a.result
+
+	for i, item := range a.items {
+		if err := ctx.Err(); err != nil {
+			return i, err
+		}
+		if a.processed+i > 0 {
 			time.Sleep(providerPause)
 		}
-		if err := jobs.UpdateProgress(ctx, jobID, i+1, len(items), item.Title); err != nil {
+		if err := jobs.UpdateProgress(ctx, a.jobID, a.processed+i+1, a.total, item.Title); err != nil {
 			log.Warn("could not record progress", slog.Any(logging.KeyError, err))
 		}
 
 		identity, err := identities.Get(ctx, item.ID)
 		if err != nil {
-			return result, err
+			return i, err
 		}
 		providerID := identity.ExternalIDs[s.provider.Name()]
 		if providerID == "" {
@@ -261,7 +333,7 @@ func (s *MetadataService) refresh(
 		md, err := s.provider.FetchMetadata(ctx, providerID)
 		switch {
 		case errors.Is(err, metadata.ErrRateLimited):
-			return result, err
+			return i, err
 		case err != nil:
 			// One film we could not fetch is not a reason to abandon the pass,
 			// the same as one unprobeable file during a scan.
@@ -273,7 +345,7 @@ func (s *MetadataService) refresh(
 
 		skipped, err := s.store(ctx, repo, item.ID, md)
 		if err != nil {
-			return result, err
+			return i, err
 		}
 		result.fetched++
 		result.skippedLocked += skipped
@@ -283,9 +355,9 @@ func (s *MetadataService) refresh(
 		// artwork existed. Only the image bytes are extra, and they come from
 		// a CDN rather than the API.
 		downloaded, imagesSkipped, err := s.storeImages(
-			ctx, repo, item.ID, md, all, log.With(slog.String("item", item.Title)))
+			ctx, repo, item.ID, md, a.all, log.With(slog.String("item", item.Title)))
 		if err != nil {
-			return result, err
+			return i, err
 		}
 		result.imagesDownloaded += downloaded
 		result.skippedLocked += imagesSkipped
@@ -296,7 +368,7 @@ func (s *MetadataService) refresh(
 			slog.Int("fields_skipped_locked", skipped+imagesSkipped))
 	}
 
-	return result, nil
+	return len(a.items), nil
 }
 
 // store writes each field the provider supplied, counting those the lock

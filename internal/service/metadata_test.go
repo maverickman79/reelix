@@ -3,8 +3,10 @@ package service_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -377,5 +379,145 @@ func TestSetRejectsAnUnknownField(t *testing.T) {
 	err := f.metadata.SetLocked(context.Background(), f.item.ID, "runtime", true)
 	if !errors.Is(err, service.ErrInvalidArgument) {
 		t.Errorf("err = %v, want ErrInvalidArgument — runtime is deliberately not managed", err)
+	}
+}
+
+// addIdentifiedFilms writes n more films, scans them in, and gives each a
+// manual identity so the refresh pass will consider it.
+//
+// Identity is set directly rather than run through the matcher because this
+// test is about how far the refresh pass gets, not about what the matcher
+// decides. Manual and matched are equally usable to ItemsNeedingMetadata, and
+// going through SetManual means the test does not have to arrange n distinct
+// films that all match one canned candidate.
+func (f *metadataFixture) addIdentifiedFilms(t *testing.T, n int) []domain.MediaItem {
+	t.Helper()
+
+	for i := range n {
+		name := fmt.Sprintf("Extra Film %02d (20%02d)", i, i)
+		f.write(filepath.Join(name, name+".mkv"), 1024)
+	}
+	if job := f.scan(); job.State != domain.JobStateCompleted {
+		t.Fatalf("scan did not complete: %s", job.State)
+	}
+
+	items, err := repository.NewMediaRepository(f.pool).
+		ListItemsByLibrary(context.Background(), f.library)
+	if err != nil {
+		t.Fatalf("listing items: %v", err)
+	}
+	if len(items) != n+1 {
+		t.Fatalf("library holds %d items, want %d", len(items), n+1)
+	}
+
+	for _, item := range items {
+		if item.ID == f.item.ID {
+			continue // already identified by the fixture
+		}
+		if err := f.identity.SetManual(context.Background(), item.ID,
+			map[string]string{"tmdb": "550"}); err != nil {
+			t.Fatalf("setting identity for %s: %v", item.Title, err)
+		}
+	}
+	return items
+}
+
+// itemsWithMetadata counts how many items in the library hold a metadata row.
+func (f *metadataFixture) itemsWithMetadata(t *testing.T) int {
+	t.Helper()
+
+	var n int
+	if err := f.pool.QueryRow(context.Background(),
+		`SELECT count(DISTINCT media_item_id) FROM media_item_metadata`).Scan(&n); err != nil {
+		t.Fatalf("counting items with metadata: %v", err)
+	}
+	return n
+}
+
+// TestAFullRefreshReachesItemsBeyondOneBatch is the regression test for a
+// refresh that could never see past its first batch.
+//
+// ItemsNeedingMetadata was a LIMIT over a fixed ORDER BY with no offset and no
+// cursor. With ?all=true there is no "needs work" predicate, so fetching an
+// item does not remove it from the selection set — every run re-selected the
+// same first batch, and the item after it was unreachable by any number of
+// runs. Correcting a field on a film past that boundary was impossible, and a
+// full refresh was useless as a measurement of a library larger than a batch.
+//
+// THE BATCH IS SHRUNK RATHER THAN THE LIBRARY GROWN. At the real batch size of
+// two hundred this test would need two hundred films to say anything at all;
+// below that size it passes against the broken code, which is why the bug
+// survived a six-film library. Five films and a batch of two crosses the same
+// boundary three times over.
+func TestAFullRefreshReachesItemsBeyondOneBatch(t *testing.T) {
+	provider := &fakeProvider{meta: sampleMetadata()}
+	f := newMetadataFixture(t, provider)
+
+	const films = 5
+	f.addIdentifiedFilms(t, films-1)
+	f.metadata.SetBatchForTest(2)
+
+	provider.metaCalls = 0
+	if job := f.refresh(t, true); job.State != domain.JobStateCompleted {
+		t.Fatalf("refresh state = %s, want completed (error: %v)", job.State, job.Error)
+	}
+
+	if provider.metaCalls != films {
+		t.Errorf("provider was asked about %d films, want %d — the pass stopped at a batch boundary",
+			provider.metaCalls, films)
+	}
+	if got := f.itemsWithMetadata(t); got != films {
+		t.Errorf("%d films hold metadata, want %d", got, films)
+	}
+}
+
+// TestTheDefaultRefreshReachesItemsBeyondOneBatch pins the same boundary for
+// the default pass.
+//
+// The default pass concealed the bug rather than escaping it: fetching an item
+// removes it from the "never fetched" set, so a SECOND run moved on by itself
+// and the library eventually finished across several runs. It still has to
+// finish in ONE, and the cursor is what makes that true — so this asserts the
+// whole library lands from a single pass.
+func TestTheDefaultRefreshReachesItemsBeyondOneBatch(t *testing.T) {
+	provider := &fakeProvider{meta: sampleMetadata()}
+	f := newMetadataFixture(t, provider)
+
+	const films = 5
+	f.addIdentifiedFilms(t, films-1)
+	f.metadata.SetBatchForTest(2)
+
+	provider.metaCalls = 0
+	if job := f.refresh(t, false); job.State != domain.JobStateCompleted {
+		t.Fatalf("refresh state = %s, want completed (error: %v)", job.State, job.Error)
+	}
+
+	if got := f.itemsWithMetadata(t); got != films {
+		t.Errorf("one default pass reached %d films, want %d", got, films)
+	}
+}
+
+// TestAFullRefreshReportsTheWholeLibraryAsItsTotal pins job progress against
+// the batch size.
+//
+// Progress is what an operator watches during the library-wide passes this
+// milestone is about to run for real, so a total that describes the current
+// batch rather than the whole pass would read as a job finishing five times
+// over. The count is taken once, before the first batch.
+func TestAFullRefreshReportsTheWholeLibraryAsItsTotal(t *testing.T) {
+	provider := &fakeProvider{meta: sampleMetadata()}
+	f := newMetadataFixture(t, provider)
+
+	const films = 5
+	f.addIdentifiedFilms(t, films-1)
+	f.metadata.SetBatchForTest(2)
+
+	job := f.refresh(t, true)
+	if job.State != domain.JobStateCompleted {
+		t.Fatalf("refresh state = %s, want completed (error: %v)", job.State, job.Error)
+	}
+	if job.ProgressTotal != films {
+		t.Errorf("job total = %d, want %d — the total describes a batch, not the pass",
+			job.ProgressTotal, films)
 	}
 }
