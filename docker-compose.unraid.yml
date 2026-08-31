@@ -1,0 +1,33 @@
+# Unraid override: bind mounts under appdata instead of named volumes.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.unraid.yml up -d
+#
+# WHY BIND MOUNTS RATHER THAN NAMED VOLUMES. Unraid keeps Docker's own storage
+# in an image file or directory that operators are routinely told to delete and
+# recreate as a first troubleshooting step — it is standard advice on the
+# forums, not an exotic act. A named volume goes with it, taking the database
+# and the identified library along. A bind mount under appdata survives, and it
+# is where an Unraid operator expects to find an application's state.
+#
+# WHERE THESE PATHS MUST LIVE. On the CACHE POOL, never on the array. Every
+# write to a parity-protected array costs a read-modify-write across the data
+# disk and both parity disks, and PostgreSQL writes constantly. Set the appdata
+# share to primary storage = cache with the mover disabled, which is Unraid's
+# own default for appdata and the single most consequential choice here.
+#
+# The artwork cache is small — a few hundred KB per film, so a few gigabytes
+# across a large library — and belongs on the pool with everything else.
+#
+# Media is the exception and stays on the array, read-only, per the
+# constitution. REELIX_MEDIA_DIR selects it.
+
+services:
+  postgres:
+    volumes:
+      - ${REELIX_APPDATA:-/mnt/user/appdata/reelix}/postgres:/var/lib/postgresql/data
+
+  app:
+    volumes:
+      - ${REELIX_APPDATA:-/mnt/user/appdata/reelix}/config:/config
+      - ${REELIX_APPDATA:-/mnt/user/appdata/reelix}/cache:/cache
+      - ${REELIX_MEDIA_DIR:?REELIX_MEDIA_DIR must be set in .env}:/media:ro

@@ -3,6 +3,10 @@
 #   cp .env.example .env   # then edit REELIX_DB_PASSWORD
 #   docker compose up -d
 #
+# This file PULLS a published image. It does not build one — see
+# docker-compose.build.yml for that, and the note on the app service below for
+# why the two are separate.
+#
 # This is the main application stack. The capture harness in
 # hack/capture/docker-compose.yml is a separate, standalone stack with its own
 # project name; the two never share a network, a volume, or a port.
@@ -39,12 +43,26 @@ services:
     restart: unless-stopped
 
   app:
-    build:
-      context: .
-      args:
-        VERSION: ${REELIX_VERSION:-0.0.1}
-    image: reelix/server:${REELIX_VERSION:-0.0.1}
+    # PULLED, NOT BUILT, and the separation is deliberate.
+    #
+    # A host that builds its own image is not running the image that was
+    # tested; it resolves its own Go patch release and its own
+    # jellyfin-ffmpeg7 package on whatever day it happens to build. That is
+    # tolerable on the development VPS, where the source is already present and
+    # a rebuild is the point. It is not tolerable on a deployment whose whole
+    # purpose is to produce trustworthy measurements, because it puts a
+    # variable between the artifact that was measured and the artifact that is
+    # running.
+    #
+    # Development adds the build back:
+    #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d
+    image: ${REELIX_IMAGE:-ghcr.io/maverickman79/reelix/server}:${REELIX_VERSION:-0.0.1}
     container_name: reelix-app
+    # The image runs as uid 1000, which is right for a desktop-Linux host and
+    # wrong for Unraid, where shares and appdata belong to nobody:users
+    # (99:100). Overridden here rather than in the image, because it is a fact
+    # about the host's filesystem rather than about Reelix.
+    user: "${REELIX_UID:-1000}:${REELIX_GID:-1000}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -66,13 +84,20 @@ services:
       # rather than as a container that restarts forever.
       REELIX_TMDB_API_KEY: ${REELIX_TMDB_API_KEY:?REELIX_TMDB_API_KEY must be set in .env}
     ports:
-      - "100.95.0.122:${REELIX_HTTP_PORT:-8080}:8080"
+      # The bind address is a property of the host, not of Reelix. The
+      # development VPS publishes on its Tailscale address so the listener is
+      # never on the public internet; a LAN host sets 0.0.0.0. It must stay
+      # explicit — a default of 0.0.0.0 baked in here would silently expose the
+      # VPS the first time somebody forgot to set it.
+      - "${REELIX_HTTP_BIND:?REELIX_HTTP_BIND must be set in .env}:${REELIX_HTTP_PORT:-8080}:8080"
     volumes:
       - config:/config
       - cache:/cache
       # Media is read-only by default. Write access is requested only when a
       # feature explicitly requires modifying media files.
       - ${REELIX_MEDIA_DIR:-./media}:/media:ro
+    # ffprobe is invoked once per file and reads only headers, so it is short
+    # and cheap; nothing here needs privileges or host access.
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
       interval: 10s

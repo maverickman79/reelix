@@ -1,0 +1,19 @@
+# Development override that BUILDS the application image from this checkout.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#
+# The canonical stack pulls a published image instead, so that a deployment
+# runs the artifact that was tested rather than one it resolved for itself on
+# the day it happened to build. See the note on the app service in
+# docker-compose.yml.
+#
+# `image:` is repeated here so a local build tags the same name the canonical
+# file expects, which is what lets `docker compose push` publish it.
+
+services:
+  app:
+    build:
+      context: .
+      args:
+        VERSION: ${REELIX_VERSION:-0.0.1}
+    image: ${REELIX_IMAGE:-ghcr.io/maverickman79/reelix/server}:${REELIX_VERSION:-0.0.1}
